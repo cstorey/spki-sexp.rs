@@ -1,4 +1,9 @@
 [package]
 name = "spki-sexp"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Ceri Storey <cez@necrofish.org.uk>"]
+
+
+[dependencies]
+quickcheck = "*"
+quickcheck_macros = "*"
