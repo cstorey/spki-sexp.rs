@@ -11,11 +11,12 @@ extern crate quickcheck;
 
 use rand::Rng;
 
-use quickcheck::{quickcheck, Arbitrary, Gen};
+use quickcheck::{Arbitrary, Gen};
 use quickcheck as qc;
 
 use std::io::Write;
-use std::iter::{FromIterator,Peekable};
+use std::iter::{Iterator, FromIterator,Peekable};
+use std::{error,fmt};
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 enum SexpToken {
@@ -70,34 +71,33 @@ fn encode<'a, I>(it : I) -> Vec<u8> where I : Iterator<Item=&'a SexpToken> {
   out
 }
 
-struct DecodingIterator<I: Iterator> {
+struct TokenisingIterator<I: Iterator<Item=u8>> {
   iter: Peekable<I>
 }
 
-impl<'a, I> Iterator for DecodingIterator<I> where I : Iterator<Item=&'a u8> {
+impl<'a, I> Iterator for TokenisingIterator<I> where I :Iterator<Item=u8> {
   type Item = SexpToken;
   fn next(&mut self) -> Option<SexpToken> {
-    let current = self.iter.peek().map(|cp| **cp);
-    current.map(|c|
-      match c {
-	c if c == '(' as u8 => { self.iter.next(); SexpToken::OpenParen }
-      , c if c == ')' as u8 => { self.iter.next(); SexpToken::CloseParen }
-      , c if '0' as u8 <= c && c <= '9' as u8 => { let s = read_string(&mut self.iter); SexpToken::Str(s) }
-      , _ => panic!("Unexpected char in sexp decode: {:?}", c)
-      }
-    )
+    let current = self.iter.peek().map(|p|*p);
+    match current {
+      Some(c) if c == '(' as u8 => { self.iter.next(); Some(SexpToken::OpenParen) }
+    , Some(c) if c == ')' as u8 => { self.iter.next(); Some(SexpToken::CloseParen) }
+    , Some(c) if c >= '0' as u8 && c <= '9' as u8 => { let s = read_string(&mut self.iter); Some(SexpToken::Str(s)) }
+    , None => None
+    , peeked => panic!("Unexpected char in sexp tokenise: {:?}", peeked)
+    }
   }
 }
 
 
-fn decode<'a, I>(it : I) -> DecodingIterator<I> where I : Iterator<Item=&'a u8> {
-  DecodingIterator { iter: it.peekable() }
+fn tokenise<I:Iterator<Item=u8>>(it : I) -> TokenisingIterator<I> {
+  TokenisingIterator { iter: it.peekable() }
 }
 
-fn read_string<'a, I>(it : &mut Peekable<I>) -> String where I : Iterator<Item=&'a u8> {
+fn read_string<'a, I>(it : &mut Peekable<I>) -> String where I : Iterator<Item=u8> {
 //  writeln!(std::io::stderr(),"read_string: {:?}" , it.peek());
   let mut len = 0;
-  while let Some(&c) = it.next() {
+  while let Some(c) = it.next() {
     if c <= '9' as u8 {
       let digit = c - '0' as u8;
       len = len * 10 + digit as usize;
@@ -112,7 +112,7 @@ fn read_string<'a, I>(it : &mut Peekable<I>) -> String where I : Iterator<Item=&
   }
 
 //  writeln!(std::io::stderr(),"read_string! len: {:?}", len);
-  let bytes : Vec<u8> = it.take(len).map(|c| *c).collect();
+  let bytes : Vec<u8> = it.take(len).collect();
   let s = String::from_utf8_lossy(bytes.as_slice());
 //  writeln!(std::io::stderr(),"read_string! {:?}; peek:{:?}", s, it.peek());
   s.into_owned()
@@ -123,11 +123,13 @@ fn vec8_as_str(v :&Vec<u8>) -> String {
 }
 
 #[quickcheck]
-fn round_trip(toks : Vec<SexpToken>) -> bool {
+fn round_trip_tokens(toks : Vec<SexpToken>) -> bool {
+  use std::ops::Deref;
 //   writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
   let encd = encode(toks.iter());
 //   writeln!(std::io::stderr(),"{:?}", vec8_as_str(&encd)).unwrap();
-  let res : Vec<_> = decode(encd.iter()).collect();
+  let it : std::slice::Iter<u8> = encd.iter();
+  let mut res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
 //   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, vec8_as_str(&encd), res, res == toks).unwrap();
   res == toks
 }
