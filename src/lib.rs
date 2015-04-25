@@ -77,7 +77,7 @@ struct DecodingIterator<I: Iterator> {
 impl<'a, I> Iterator for DecodingIterator<I> where I : Iterator<Item=&'a u8> {
   type Item = SexpToken;
   fn next(&mut self) -> Option<SexpToken> {
-    let current : Option<u8> = self.iter.peek().map(|cp| **cp);
+    let current = self.iter.peek().map(|cp| **cp);
     current.map(|c|
       match c {
 	c if c == '(' as u8 => { self.iter.next(); SexpToken::OpenParen }
