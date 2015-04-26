@@ -11,7 +11,7 @@ types using Serde. Currently absurdly incomplete and likely to panic at the
 slightest provocation.
 
 Somewhat inspired by both LShift's
-[Bletchley](https://github.com/lshift/bletchley) the experimental
+[Bletchley](https://github.com/lshift/bletchley) and the experimental
 [hop](https://github.com/tonyg/hop) broker, this project is intended for use
 as a wire-format, which is easy to implement in different languages.
 
