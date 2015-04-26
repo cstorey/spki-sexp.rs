@@ -7,3 +7,7 @@ authors = ["Ceri Storey <cez@necrofish.org.uk>"]
 [dependencies]
 quickcheck = "*"
 quickcheck_macros = "*"
+
+[dependencies.serde]
+version = "*"
+git = "https://github.com/erickt/rust-serde.git"
