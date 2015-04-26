@@ -147,8 +147,10 @@ pub fn to_bytes<T>(value: &T) -> Vec<u8> {
 #[derive(Debug)]
 enum Error {
   SyntaxError,
+  UnexpectedTokenError(SexpToken),
   EofError,
   IoError(io::Error),
+  InvalidNumber(std::num::ParseIntError),
   UnknownField(String),
   MissingField(String),
 }
@@ -157,10 +159,12 @@ impl error::Error for Error {
   fn description(&self) -> &str {
     match *self {
       Error::SyntaxError => "Syntax error",
-	Error::EofError => "EOF",
-	Error::IoError(ref e) => error::Error::description(e),
-	Error::UnknownField(_) => "unknown field",
-	Error::MissingField(_) => "missing field"
+      Error::UnexpectedTokenError(_) => "Unexpected Token",
+      Error::EofError => "EOF",
+      Error::IoError(ref e) => error::Error::description(e),
+      Error::InvalidNumber(ref e) => error::Error::description(e),
+      Error::UnknownField(_) => "unknown field",
+      Error::MissingField(_) => "missing field"
     }
   }
 
@@ -199,6 +203,15 @@ impl From<io::Error> for Error {
   }
 }
 
+impl From<std::num::ParseIntError> for Error {
+  fn from(error: std::num::ParseIntError) -> Error {
+    Error::InvalidNumber(error)
+  }
+}
+
+static SEQ: &'static str = "seq";
+static UINT: &'static str = "uint";
+
 struct Deserializer<I> where I : Iterator<Item=u8> {
   iter : Peekable<TokenisingIterator<I>>
 }
@@ -211,19 +224,38 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
   fn end(&self) -> Result<(), Error> {
     Ok(())
   }
-}
 
+  fn parse_list<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+    visitor.visit_seq(ListParser{ de: self })
+  }
+
+  fn parse_uint<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) => visitor.visit_u64(try!(s.parse()))
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    }
+  }
+}
 
 impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
   type Error = Error;
   fn visit<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
-    writeln!(std::io::stderr(), "Deserializer::visit");
+    // writeln!(std::io::stderr(), "Deserializer::visit: {:?}", self.iter.peek());
+
     match self.iter.next() {
       Some(SexpToken::Str(ref s)) => visitor.visit_str(s),
       Some(SexpToken::OpenParen) => {
-	visitor.visit_seq(ListParser{ de: self })
+	match self.iter.next() {
+	  Some(SexpToken::Str(ref s)) if s == SEQ => self.parse_list(visitor)
+	, Some(SexpToken::Str(ref s)) if s == UINT => self.parse_uint(visitor)
+	// , Some(SexpToken::CloseParen) => self.visit_unit()
+	, None => Err(Error::EofError)
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	}
       }
-      _ => Err(Error::SyntaxError)
+      , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+      , None => Err(Error::EofError)
     }
   }
 
@@ -272,7 +304,7 @@ struct ListParser<'a, I: Iterator<Item=u8> + 'a> {
 impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
   type Error = Error;
   fn visit<T>(&mut self) -> Result<Option<T>, Error> where T : de::Deserialize {
-    writeln!(std::io::stderr(), "ListParser::visit: peek: {:?}", self.de.iter.peek()).unwrap();
+    // writeln!(std::io::stderr(), "ListParser::visit: peek: {:?}", self.de.iter.peek()).unwrap();
     match self.de.iter.peek() {
       Some(&SexpToken::CloseParen) => {
 	let _ = self.de.iter.next().unwrap();
@@ -288,7 +320,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
 
   fn end(&mut self) -> Result<(), Error> {
     let cur = self.de.iter.peek().map(|p| p.clone());
-    writeln!(std::io::stderr(), "ListParser::end: peek: {:?}", self.de.iter.peek()).unwrap();
+    // writeln!(std::io::stderr(), "ListParser::end: peek: {:?}", self.de.iter.peek()).unwrap();
     Ok(())
   }
 }
@@ -321,16 +353,22 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
   type Error = Error;
 
   fn visit_unit(&mut self) -> Result<(), Error> {
-    writeln!(std::io::stderr(), "Serializer::visit_unit").unwrap();
-    Ok(())
+    // writeln!(std::io::stderr(), "Serializer::visit_unit").unwrap();
+    try!(self.open());
+    try!(self.write_str(SEQ.to_string()));
+    self.close()
   }
   fn visit_bool(&mut self, val: bool) -> Result<(), Error> {
     writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
     Ok(())
   }
+  // TODO: Consider using display-hints for types of atoms.
   fn visit_u64(&mut self, v: u64) -> Result<(), Error> {
-    writeln!(std::io::stderr(), "Serializer::visit_u64: {:?}", v).unwrap();
-    self.write_str(format!("{}", v))
+    // writeln!(std::io::stderr(), "Serializer::visit_u64: {:?}", v).unwrap();
+    try!(self.open());
+    try!(self.write_str(UINT.to_string()));
+    try!(self.write_str(format!("{}", v)));
+    self.close()
   }
   fn visit_i64(&mut self, v: i64) -> Result<(), Error> {
     writeln!(std::io::stderr(), "Serializer::visit_i64: {:?}", v).unwrap();
@@ -341,7 +379,7 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
     Ok(())
   }
   fn visit_str(&mut self, v: &str) -> Result<(), Error> {
-    writeln!(std::io::stderr(), "Serializer::visit_str: {:?}", v).unwrap();
+    // writeln!(std::io::stderr(), "Serializer::visit_str: {:?}", v).unwrap();
     self.write_str(format!("{}", v))
   }
   fn visit_none(&mut self) -> Result<(), Error> {
@@ -353,13 +391,14 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
     Ok(())
   }
   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
-    writeln!(std::io::stderr(), "Serializer::visit_seq").unwrap();
+    // writeln!(std::io::stderr(), "Serializer::visit_seq").unwrap();
     try!(self.open());
+    try!(self.write_str(SEQ.to_string()));
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
   }
   fn visit_seq_elt<T>(&mut self, v: T) -> Result<(), Error> where T: ser::Serialize {
-    writeln!(std::io::stderr(), "Serializer::visit_seq_elt").unwrap();
+    // writeln!(std::io::stderr(), "Serializer::visit_seq_elt").unwrap();
     v.serialize(self)
   }
   fn visit_map<V>(&mut self, mut visitor: V) -> Result<(), Error> {
@@ -390,26 +429,44 @@ fn as_bytes<T>(value: &T) -> Vec<u8> where T : ser::Serialize {
     out
 }
 
-// #[quickcheck]
-fn serde_round_trip_string(val: String) -> bool {
+fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T) -> bool{
   let encd = as_bytes(&val);
-  let dec = from_bytes::<String>(encd.as_slice());
-  writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap();
+  let dec = from_bytes::<T>(encd.as_slice());
+  // writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap();
   dec.unwrap() == val
 }
 
 #[quickcheck]
-fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
-  let encd = as_bytes(&val);
-  let dec = from_bytes::<Vec<String>>(encd.as_slice());
-  writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap();
-  dec.unwrap() == val
+fn serde_round_trip_unit(val: ()) -> bool {
+  round_trip_prop(val)
 }
 
-//#[quickcheck]
-//fn serde_round_trip_u64(val: u64) -> bool {
-//  let encd = as_bytes(&val);
-//  let dec = from_bytes::<u64>(encd.as_slice());
-//  writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap();
-//  dec.unwrap() == val
-//}
+#[quickcheck]
+fn serde_round_trip_string(val: String) -> bool {
+  round_trip_prop(val)
+}
+
+#[quickcheck]
+fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
+  round_trip_prop(val)
+}
+
+#[quickcheck]
+fn serde_round_trip_u64(val: u64) -> bool {
+  round_trip_prop(val)
+}
+
+#[quickcheck]
+fn serde_round_trip_u8(val: u8) -> bool {
+  round_trip_prop(val)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_u64(val: (u64,)) -> bool {
+  round_trip_prop(val)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
+  round_trip_prop(val)
+}
