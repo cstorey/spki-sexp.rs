@@ -65,60 +65,70 @@ fn round_trip_tokens(toks : Vec<Tok>) -> bool {
   res == toks
 }
 
-fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T) -> bool{
+fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool) -> bool{
   let encd = as_bytes(&val);
-//  writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap();
+  if verbose { writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap(); };
   let dec = from_bytes::<T>(encd.as_slice());
-//   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap();
+  if verbose { writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap(); };
   dec.unwrap() == val
 }
 
 #[quickcheck]
 fn serde_round_trip_unit(val: ()) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_string(val: String) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_u64(val: u64) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_u8(val: u8) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_tuple_u64(val: (u64,)) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_tuple_u64_u64(val: (u64,u64)) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 #[quickcheck]
 fn serde_round_trip_tuple_u64_u64_u64(val: (u64,u64,u64)) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 #[quickcheck]
 fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[quickcheck]
 fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_option_u64(val: Option<u64>) -> bool {
+  round_trip_prop(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_option_string(val: Option<String>) -> bool {
+  round_trip_prop(val, false)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -131,7 +141,7 @@ impl quickcheck::Arbitrary for MyUnityType {
 
 #[quickcheck]
 fn serde_round_trip_unity_struct(val: MyUnityType) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -148,7 +158,7 @@ impl quickcheck::Arbitrary for Point {
 
 // #[quickcheck]
 fn serde_round_trip_named_struct(val: Point) -> bool {
-  round_trip_prop(val)
+  round_trip_prop(val, false)
 }
 
 fn should_raise_error_when_wrong_struct_name() {}

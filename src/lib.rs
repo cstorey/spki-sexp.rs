@@ -206,6 +206,28 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
     , Some(tok) => Err(Error::UnexpectedTokenError(tok))
     }
   }
+
+  fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) if s == "none" => visitor.visit_none()
+    , Some(SexpToken::OpenParen) => {
+	match self.iter.next() {
+	  Some(SexpToken::Str(ref s)) if s == "some" => {
+	    let result = visitor.visit_some(self);
+	    match self.iter.next() {
+	      Some(SexpToken::CloseParen) => result
+	    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	    , None => Err(Error::EofError)
+	    }
+	  } 
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	, None => Err(Error::EofError)
+	}
+    }
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    }
+  }
 }
 
 impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
@@ -231,8 +253,7 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
   }
 
   fn visit_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//    writeln!(std::io::stderr(), "Deserializer::visit_option").unwrap();
-    panic!("Unsupported visitation: {}", "visit_option")
+    self.parse_option(visitor)
   }
   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
@@ -388,6 +409,7 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
 
   fn visit_bool(&mut self, val: bool) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
+    panic!("Unsupported serializer case: {}: {:?}", "visit_bool", val);
     Ok(())
   }
   // TODO: Consider using display-hints for types of atoms.
@@ -400,11 +422,11 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
   }
   fn visit_i64(&mut self, v: i64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_i64: {:?}", v).unwrap();
-    Ok(())
+    panic!("Unsupported serializer case: {}: {:?}", "visit_i64", v);
   }
   fn visit_f64(&mut self, v: f64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_f64: {:?}", v).unwrap();
-    Ok(())
+    panic!("Unsupported serializer case: {}: {:?}", "visit_f64", v);
   }
   fn visit_str(&mut self, v: &str) -> Result<(), Error> {
 //     writeln!(std::io::stderr(), "Serializer::visit_str: {:?}", v).unwrap();
@@ -412,11 +434,14 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
   }
   fn visit_none(&mut self) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_none").unwrap();
-    Ok(())
+    self.write_str("none".to_string())
   }
-  fn visit_some<T>(&mut self, v: T) -> Result<(), Error> {
-//    writeln!(std::io::stderr(), "Serializer::visit_some(?)").unwrap();
-    Ok(())
+  fn visit_some<T>(&mut self, v: T) -> Result<(), Error> where T: ser::Serialize {
+ //    writeln!(std::io::stderr(), "Serializer::visit_some(?)").unwrap();
+    try!(self.open());
+    try!(self.write_str("some".to_string()));
+    v.serialize(self);
+    self.close()
   }
   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
 //     writeln!(std::io::stderr(), "Serializer::visit_seq").unwrap();
