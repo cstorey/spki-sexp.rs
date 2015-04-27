@@ -1,14 +1,14 @@
-language: rust
-rust:
-  - nightly
-#  - 1.0.0-beta
 sudo: false
 cache:
   directories:
     - $HOME/.cargo
-    - $HOME/rust
-    - $HOME/rust-installer
+    - $HOME/.multirust
+    - $HOME/opt
+    - target
+
+env:
+  - RUST_VERSION=nightly-2015-04-22
 
 script:
-  - cargo build --verbose
-  - cargo test --verbose
+  - build/01-setup.sh
+  - build/02-build.sh

@@ -1,0 +1,3 @@
+MULTIRUST_DIR=$HOME/opt/multirust
+PATH=$MULTIRUST_DIR/bin:$PATH
+
