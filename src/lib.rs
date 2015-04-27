@@ -4,6 +4,8 @@
 #![feature(collections)]
 #![feature(convert)]
 
+#![feature(core)]
+extern crate core;
 extern crate rand;
 
 extern crate serde;
@@ -98,7 +100,8 @@ pub enum Error {
   UnexpectedTokenError(SexpToken),
   EofError,
   IoError(io::Error),
-  InvalidNumber(std::num::ParseIntError),
+  InvalidInt(std::num::ParseIntError),
+  InvalidFloat(core::num::ParseFloatError),
   InvalidBool(std::str::ParseBoolError),
   UnknownField(String),
   MissingField(String),
@@ -111,7 +114,8 @@ impl error::Error for Error {
       Error::UnexpectedTokenError(_) => "Unexpected Token",
       Error::EofError => "EOF",
       Error::IoError(ref e) => error::Error::description(e),
-      Error::InvalidNumber(ref e) => error::Error::description(e),
+      Error::InvalidInt(ref e) => error::Error::description(e),
+      Error::InvalidFloat(ref e) => "Invalid floating point number", // error::Error::description(e),
       Error::InvalidBool(ref e) => error::Error::description(e),
       Error::UnknownField(_) => "unknown field",
       Error::MissingField(_) => "missing field"
@@ -156,7 +160,7 @@ impl From<io::Error> for Error {
 
 impl From<std::num::ParseIntError> for Error {
   fn from(error: std::num::ParseIntError) -> Error {
-    Error::InvalidNumber(error)
+    Error::InvalidInt(error)
   }
 }
 
@@ -165,10 +169,20 @@ impl From<std::str::ParseBoolError> for Error {
     Error::InvalidBool(error)
   }
 }
+
+// http://stackoverflow.com/questions/29830005/try-macro-stopped-working-after-rust-upgrade
+impl From<core::num::ParseFloatError> for Error {
+  fn from(error: core::num::ParseFloatError) -> Error {
+    Error::InvalidFloat(error)
+  }
+}
+
 static SEQ: &'static str = "seq";
 static MAP: &'static str = "map";
 static UINT: &'static str = "uint";
+static INT: &'static str = "int";
 static BOOL: &'static str = "bool";
+static FLOAT: &'static str = "float";
 
 struct Deserializer<I> where I : Iterator<Item=u8> {
   iter : Peekable<TokenisingIterator<I>>
@@ -216,7 +230,7 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
   }
 
   fn parse_bool<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
-//    writeln!(std::io::stderr(), "Deserializer::parse_uint: {:?}", self.iter.peek());
+//    writeln!(std::io::stderr(), "Deserializer::parse_bool: {:?}", self.iter.peek());
     match self.iter.next() {
       Some(SexpToken::Str(ref s)) => {
 	match self.iter.next() {
@@ -230,7 +244,41 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
     }
   }
 
+  fn parse_int<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+//    writeln!(std::io::stderr(), "Deserializer::parse_int: {:?}", self.iter.peek());
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) => {
+	match self.iter.next() {
+	  Some(SexpToken::CloseParen) => visitor.visit_i64(try!(s.parse()))
+	, Some(tok) => {
+//	    writeln!(std::io::stderr(), "Deserializer::parse_int: wanted closeparen, unexpected: {:?}", tok);
+	    Err(Error::UnexpectedTokenError(tok))
+	  }
+	, None => Err(Error::EofError)
+	}
+      }
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    }
+  }
 
+  fn parse_float<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+//    writeln!(std::io::stderr(), "Deserializer::parse_float: {:?}", self.iter.peek());
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) => {
+	match self.iter.next() {
+	  Some(SexpToken::CloseParen) => visitor.visit_f64(try!(s.parse()))
+	, Some(tok) => {
+//	    writeln!(std::io::stderr(), "Deserializer::parse_uint: wanted closeparen, unexpected: {:?}", tok);
+	    Err(Error::UnexpectedTokenError(tok))
+	  }
+	, None => Err(Error::EofError)
+	}
+      }
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    }
+  }
   fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
     match self.iter.next() {
       Some(SexpToken::Str(ref s)) if s == "none" => visitor.visit_none()
@@ -243,7 +291,7 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
 	    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
 	    , None => Err(Error::EofError)
 	    }
-	  } 
+	  }
 	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
 	, None => Err(Error::EofError)
 	}
@@ -269,6 +317,8 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 	  Some(SexpToken::Str(ref s)) if s == SEQ => self.parse_list(visitor)
 	, Some(SexpToken::Str(ref s)) if s == MAP => self.parse_map(visitor, MAP)
 	, Some(SexpToken::Str(ref s)) if s == UINT => self.parse_uint(visitor)
+	, Some(SexpToken::Str(ref s)) if s == INT => self.parse_int(visitor)
+	, Some(SexpToken::Str(ref s)) if s == FLOAT => self.parse_float(visitor)
 	, Some(SexpToken::Str(ref s)) if s == BOOL => self.parse_bool(visitor)
 	, None => Err(Error::EofError)
 	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
@@ -450,16 +500,23 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
 //     writeln!(std::io::stderr(), "Serializer::visit_u64: {:?}", v).unwrap();
     try!(self.open());
     try!(self.write_str(UINT.to_string()));
-    try!(self.write_str(format!("{}", v)));
+    try!(self.write_str(v.to_string()));
     self.close()
   }
   fn visit_i64(&mut self, v: i64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_i64: {:?}", v).unwrap();
-    panic!("Unsupported serializer case: {}: {:?}", "visit_i64", v);
+    try!(self.open());
+    try!(self.write_str(INT.to_string()));
+    try!(self.write_str(v.to_string()));
+    self.close()
   }
   fn visit_f64(&mut self, v: f64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::visit_f64: {:?}", v).unwrap();
-    panic!("Unsupported serializer case: {}: {:?}", "visit_f64", v);
+    try!(self.open());
+    try!(self.write_str(FLOAT.to_string()));
+    try!(self.write_str(v.to_string()));
+    self.close()
+
   }
   fn visit_str(&mut self, v: &str) -> Result<(), Error> {
 //     writeln!(std::io::stderr(), "Serializer::visit_str: {:?}", v).unwrap();
@@ -509,7 +566,6 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
     value.serialize(self)
   }
 }
-
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {
     let mut de = Deserializer::new(value.iter().map(|p|*p));
