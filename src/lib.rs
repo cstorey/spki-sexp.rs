@@ -99,6 +99,7 @@ pub enum Error {
   EofError,
   IoError(io::Error),
   InvalidNumber(std::num::ParseIntError),
+  InvalidBool(std::str::ParseBoolError),
   UnknownField(String),
   MissingField(String),
 }
@@ -111,6 +112,7 @@ impl error::Error for Error {
       Error::EofError => "EOF",
       Error::IoError(ref e) => error::Error::description(e),
       Error::InvalidNumber(ref e) => error::Error::description(e),
+      Error::InvalidBool(ref e) => error::Error::description(e),
       Error::UnknownField(_) => "unknown field",
       Error::MissingField(_) => "missing field"
     }
@@ -158,9 +160,15 @@ impl From<std::num::ParseIntError> for Error {
   }
 }
 
+impl From<std::str::ParseBoolError> for Error {
+  fn from(error: std::str::ParseBoolError) -> Error {
+    Error::InvalidBool(error)
+  }
+}
 static SEQ: &'static str = "seq";
 static MAP: &'static str = "map";
 static UINT: &'static str = "uint";
+static BOOL: &'static str = "bool";
 
 struct Deserializer<I> where I : Iterator<Item=u8> {
   iter : Peekable<TokenisingIterator<I>>
@@ -207,6 +215,22 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
     }
   }
 
+  fn parse_bool<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+//    writeln!(std::io::stderr(), "Deserializer::parse_uint: {:?}", self.iter.peek());
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) => {
+	match self.iter.next() {
+	  Some(SexpToken::CloseParen) => visitor.visit_bool(try!(s.parse()))
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	, None => Err(Error::EofError)
+	}
+      }
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    }
+  }
+
+
   fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
     match self.iter.next() {
       Some(SexpToken::Str(ref s)) if s == "none" => visitor.visit_none()
@@ -230,19 +254,22 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
   }
 }
 
+// #![feature(core)]
 impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
   type Error = Error;
   fn visit<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
-//    writeln!(std::io::stderr(), "Deserializer::visit: {:?}", self.iter.peek());
+    // writeln!(std::io::stderr(), "Deserializer::visit -> {:?}", unsafe { std::intrinsics::type_name::<V::Value>() });
+    // writeln!(std::io::stderr(), "Deserializer::visit: peek: {:?}", self.iter.peek());
 
     match self.iter.next() {
       Some(SexpToken::Str(ref s)) => visitor.visit_str(s),
       Some(SexpToken::OpenParen) => {
-//	writeln!(std::io::stderr(), "Deserializer::visit-next: Open {:?}", self.iter.peek());
+	// writeln!(std::io::stderr(), "Deserializer::visit-next: Open {:?}", self.iter.peek());
 	match self.iter.next() {
 	  Some(SexpToken::Str(ref s)) if s == SEQ => self.parse_list(visitor)
 	, Some(SexpToken::Str(ref s)) if s == MAP => self.parse_map(visitor, MAP)
 	, Some(SexpToken::Str(ref s)) if s == UINT => self.parse_uint(visitor)
+	, Some(SexpToken::Str(ref s)) if s == BOOL => self.parse_bool(visitor)
 	, None => Err(Error::EofError)
 	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
 	}
@@ -408,9 +435,15 @@ impl<W> ser::Serializer for Serializer<W> where W: Write {
   }
 
   fn visit_bool(&mut self, val: bool) -> Result<(), Error> {
-//    writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
-    panic!("Unsupported serializer case: {}: {:?}", "visit_bool", val);
-    Ok(())
+    //writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
+    try!(self.open());
+    try!(self.write_str(BOOL.to_string()));
+    if val {
+      try!(self.write_str("true".to_string()))
+    } else {
+      try!(self.write_str("false".to_string()))
+    }
+    self.close()
   }
   // TODO: Consider using display-hints for types of atoms.
   fn visit_u64(&mut self, v: u64) -> Result<(), Error> {

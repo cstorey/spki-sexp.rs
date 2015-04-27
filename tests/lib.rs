@@ -94,6 +94,11 @@ fn serde_round_trip_u64(val: u64) -> bool {
 }
 
 #[quickcheck]
+fn serde_round_trip_bool(val: bool) -> bool {
+  round_trip_prop(val, false)
+}
+
+#[quickcheck]
 fn serde_round_trip_u8(val: u8) -> bool {
   round_trip_prop(val, false)
 }
