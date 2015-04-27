@@ -232,11 +232,11 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 
   fn visit_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_option").unwrap();
-    visitor.visit_bool(false)
+    panic!("Unsupported visitation: {}", "visit_option")
   }
   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
-    visitor.visit_bool(false)
+    panic!("Unsupported visitation: {}", "visit_seq")
   }
   fn visit_map<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_map").unwrap();
@@ -258,7 +258,7 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
   }
   fn visit_named_seq<V>(&mut self, _name: &str, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_named_seq: {}", _name).unwrap();
-    visitor.visit_bool(false)
+    panic!("Unsupported visitation: {}", "visit_named_seq")
   }
 
   /* fn visit_enum<V>(&mut self, _enum: &str, _visitor: V) -> Result<V::Value, Self::Error>
@@ -270,7 +270,7 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
   fn visit_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor {
 //    writeln!(std::io::stderr(), "Deserializer::visit_bytes").unwrap();
-    visitor.visit_bool(false)
+    panic!("Unsupported visitation: {}", "visit_bytes")
   }
 }
 
