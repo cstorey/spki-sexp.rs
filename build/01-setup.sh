@@ -2,6 +2,8 @@
 
 source "$(dirname $0)/env.sh"
 
+tree $MULTIRUST_DIR
+
 set -xe
 
 if [ ! -x $MULTIRUST_DIR/bin/multirust ]; then
