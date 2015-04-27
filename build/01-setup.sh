@@ -2,7 +2,7 @@
 
 source "$(dirname $0)/env.sh"
 
-if [ ! -x $MULTIRUST_DIR/bin/cargo ]; then
+if [ ! -x $MULTIRUST_DIR/bin/multirust ]; then
   (
     cd /tmp
     git clone  --recursive https://github.com/brson/multirust.git multirust
