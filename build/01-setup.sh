@@ -2,8 +2,6 @@
 
 source "$(dirname $0)/env.sh"
 
-ls -lARt $MULTIRUST_DIR
-
 set -xe
 
 if [ ! -x $MULTIRUST_DIR/bin/multirust ]; then
@@ -17,13 +15,14 @@ if [ ! -x $MULTIRUST_DIR/bin/multirust ]; then
   )
 fi
 
-multirust default nightly
 
 if [ ! -z "$RUST_VERSION" ]; then
   multirust override "$RUST_VERSION"
 elif [ -f RUST-VERSION ]; then
   read version < RUST-VERSION
   multirust override "$version"
+else
+  multirust override nightly
 fi
 
 rustc --version
