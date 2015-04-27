@@ -5,6 +5,7 @@ cache:
     - $HOME/.cargo
     - $HOME/.multirust
     - $HOME/opt
+    - target
 
 env:
   - RUST_VERSION=nightly-2015-04-22
