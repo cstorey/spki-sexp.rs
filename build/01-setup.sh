@@ -11,7 +11,7 @@ if [ ! -x $MULTIRUST_DIR/bin/cargo ]; then
     ./build.sh 
     ./install.sh --prefix=$MULTIRUST_DIR
   )
-end
+fi
 
 if [ -f RUST-VERSION ]; then
   read version < RUST-VERSION
