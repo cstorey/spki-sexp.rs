@@ -221,12 +221,12 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 	  Some(SexpToken::Str(ref s)) if s == SEQ => self.parse_list(visitor)
 	, Some(SexpToken::Str(ref s)) if s == MAP => self.parse_map(visitor, MAP)
 	, Some(SexpToken::Str(ref s)) if s == UINT => self.parse_uint(visitor)
-	, None => panic!("EOFERROR?") // Err(Error::EofError)
+	, None => Err(Error::EofError)
 	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
 	}
       }
       , Some(tok) => Err(Error::UnexpectedTokenError(tok))
-      , None => panic!("EOFERROR?") // Err(Error::EofError)
+      , None => Err(Error::EofError)
     }
   }
 
@@ -253,7 +253,7 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
     match self.iter.next() {
 	Some(SexpToken::Str(ref s)) if _name == s => visitor.visit_named_unit(_name)
       , Some(tok) => Err(Error::UnexpectedTokenError(tok))
-      , None => panic!("EOFERROR?") // Err(Error::EofError)
+      , None => Err(Error::EofError)
     }
   }
   fn visit_named_seq<V>(&mut self, _name: &str, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
@@ -287,7 +287,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
 //	writeln!(std::io::stderr(), "ListParser::ending: peek: {:?}", self.de.iter.peek()).unwrap();
 	Ok(None)
       }
-      None => panic!("EOFERROR?"), // Err(Error::EofError),
+      None => Err(Error::EofError),
       _ => {
 	let val = try!(de::Deserialize::deserialize(self.de));
 	Ok(Some(val))
@@ -300,7 +300,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
 //    writeln!(std::io::stderr(), "ListParser::end: got: {:?}", cur).unwrap();
     match cur {
       Some(SexpToken::CloseParen) => Ok(())
-    , None => panic!("EOFERROR?") // Err(Error::EofError),
+    , None => Err(Error::EofError)
     , Some(tok) => Err(Error::UnexpectedTokenError(tok.clone()))
     }
   }
@@ -319,7 +319,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
 	let _ = self.de.iter.next().unwrap();
 	Ok(None)
       }
-      None => panic!("EOFERROR?"), // Err(Error::EofError),
+      None => Err(Error::EofError),
       _ => {
 	let val = try!(de::Deserialize::deserialize(self.de));
 	Ok(Some(val))
@@ -334,7 +334,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
       Some(tok @ SexpToken::CloseParen) => {
 	Err(Error::UnexpectedTokenError(tok.clone()))
       }
-      None => panic!("EOFERROR?"), // Err(Error::EofError),
+      None => Err(Error::EofError),
       _ => {
 	let val = try!(de::Deserialize::deserialize(self.de));
 	Ok(val)
