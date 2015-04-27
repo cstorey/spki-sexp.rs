@@ -15,10 +15,11 @@ fi
 
 multirust default nightly
 
-if [ -f RUST-VERSION ]; then
+if [ ! -z "$RUST_VERSION" ]; then
+  multirust override "$RUST_VERSION"
+elif [ -f RUST-VERSION ]; then
   read version < RUST-VERSION
   multirust override "$version"
-
 fi
 
 rustc --version

@@ -5,6 +5,9 @@ cache:
     - $HOME/.cargo
     - $HOME/.multirust
 
+env:
+  - RUST_VERSION=nightly-2015-04-22
+
 script:
   - build/01-setup.sh
   - build/02-build.sh
