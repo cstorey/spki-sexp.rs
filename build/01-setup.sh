@@ -13,9 +13,12 @@ if [ ! -x $MULTIRUST_DIR/bin/cargo ]; then
   )
 fi
 
+multirust default nightly
+
 if [ -f RUST-VERSION ]; then
   read version < RUST-VERSION
   multirust override "$version"
+
 fi
 
 rustc --version
