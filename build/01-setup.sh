@@ -2,6 +2,8 @@
 
 source "$(dirname $0)/env.sh"
 
+set -xe
+
 if [ ! -x $MULTIRUST_DIR/bin/multirust ]; then
   (
     cd /tmp
