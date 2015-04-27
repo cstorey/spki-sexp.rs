@@ -2,7 +2,7 @@
 
 source "$(dirname $0)/env.sh"
 
-tree $MULTIRUST_DIR
+ls -lARt $MULTIRUST_DIR
 
 set -xe
 
