@@ -97,7 +97,7 @@ fn read_string<'a, I>(it : &mut Peekable<I>) -> String where I : Iterator<Item=u
 #[derive(Debug)]
 pub enum Error {
   SyntaxError,
-  UnexpectedTokenError(SexpToken),
+  UnexpectedTokenError(SexpToken, Vec<SexpToken>),
   EofError,
   IoError(io::Error),
   InvalidInt(std::num::ParseIntError),
@@ -111,7 +111,7 @@ impl error::Error for Error {
   fn description(&self) -> &str {
     match *self {
       Error::SyntaxError => "Syntax error",
-      Error::UnexpectedTokenError(_) => "Unexpected Token",
+      Error::UnexpectedTokenError(_, _) => "Unexpected Token",
       Error::EofError => "EOF",
       Error::IoError(ref e) => error::Error::description(e),
       Error::InvalidInt(ref e) => error::Error::description(e),
@@ -197,7 +197,7 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
     match self.iter.peek() {
       Some(tok) => {
 //	writeln!(std::io::stderr(), "Deserializer::end: found at end: {:?}", tok);
-	Err(Error::UnexpectedTokenError(tok.clone()))
+	Err(Error::UnexpectedTokenError(tok.clone(), vec![]))
       }
     , None => Ok(())
     }
@@ -219,13 +219,13 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
 	  Some(SexpToken::CloseParen) => visitor.visit_u64(try!(s.parse()))
 	, Some(tok) => {
 //	    writeln!(std::io::stderr(), "Deserializer::parse_uint: wanted closeparen, unexpected: {:?}", tok);
-	    Err(Error::UnexpectedTokenError(tok))
+	    Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
 	  }
 	, None => Err(Error::EofError)
 	}
       }
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
     }
   }
 
@@ -235,12 +235,12 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
       Some(SexpToken::Str(ref s)) => {
 	match self.iter.next() {
 	  Some(SexpToken::CloseParen) => visitor.visit_bool(try!(s.parse()))
-	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
 	, None => Err(Error::EofError)
 	}
       }
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
     }
   }
 
@@ -252,13 +252,13 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
 	  Some(SexpToken::CloseParen) => visitor.visit_i64(try!(s.parse()))
 	, Some(tok) => {
 //	    writeln!(std::io::stderr(), "Deserializer::parse_int: wanted closeparen, unexpected: {:?}", tok);
-	    Err(Error::UnexpectedTokenError(tok))
+	    Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
 	  }
 	, None => Err(Error::EofError)
 	}
       }
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
     }
   }
 
@@ -270,13 +270,13 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
 	  Some(SexpToken::CloseParen) => visitor.visit_f64(try!(s.parse()))
 	, Some(tok) => {
 //	    writeln!(std::io::stderr(), "Deserializer::parse_uint: wanted closeparen, unexpected: {:?}", tok);
-	    Err(Error::UnexpectedTokenError(tok))
+	    Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
 	  }
 	, None => Err(Error::EofError)
 	}
       }
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
     }
   }
   fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
@@ -288,16 +288,16 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
 	    let result = visitor.visit_some(self);
 	    match self.iter.next() {
 	      Some(SexpToken::CloseParen) => result
-	    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
 	    , None => Err(Error::EofError)
 	    }
 	  }
-	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
 	, None => Err(Error::EofError)
 	}
     }
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen, SexpToken::Str("?".to_string())]))
     }
   }
 }
@@ -321,10 +321,10 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 	, Some(SexpToken::Str(ref s)) if s == FLOAT => self.parse_float(visitor)
 	, Some(SexpToken::Str(ref s)) if s == BOOL => self.parse_bool(visitor)
 	, None => Err(Error::EofError)
-	, Some(tok) => Err(Error::UnexpectedTokenError(tok))
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SEQ, MAP, UINT, FLOAT, BOOL].iter().map(|s| s.to_string()).map(SexpToken::Str).collect()))
 	}
       }
-      , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+      , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen]))
       , None => Err(Error::EofError)
     }
   }
@@ -350,7 +350,7 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 //    writeln!(std::io::stderr(), "Deserializer::visit_named_unit: {}", _name).unwrap();
     match self.iter.next() {
 	Some(SexpToken::Str(ref s)) if _name == s => visitor.visit_named_unit(_name)
-      , Some(tok) => Err(Error::UnexpectedTokenError(tok))
+      , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
       , None => Err(Error::EofError)
     }
   }
@@ -399,7 +399,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
     match cur {
       Some(SexpToken::CloseParen) => Ok(())
     , None => Err(Error::EofError)
-    , Some(tok) => Err(Error::UnexpectedTokenError(tok.clone()))
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::CloseParen]))
     }
   }
 }
@@ -430,7 +430,7 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
     let current = self.de.iter.peek().map(|p| p.clone());
     match current {
       Some(tok @ SexpToken::CloseParen) => {
-	Err(Error::UnexpectedTokenError(tok.clone()))
+	Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::Str("Any value, honest".to_string())]))
       }
       None => Err(Error::EofError),
       _ => {
