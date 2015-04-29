@@ -153,7 +153,7 @@ fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
 
 #[quickcheck]
 fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> bool {
-  round_trip_prop_eq(val, false)
+  round_trip_prop_eq(val, true)
 }
 
 #[quickcheck]
@@ -180,6 +180,20 @@ fn serde_round_trip_unity_struct(val: MyUnityType) -> bool {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct StructTuple(i32, i32);
+
+impl quickcheck::Arbitrary for StructTuple {
+  fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> StructTuple {
+    StructTuple(i32::arbitrary(g), i32::arbitrary(g))
+  }
+}
+
+#[quickcheck]
+fn serde_round_trip_struct_tuple(val: StructTuple) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
@@ -191,9 +205,58 @@ impl quickcheck::Arbitrary for Point {
   }
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_named_struct(val: Point) -> bool {
-  round_trip_prop_eq(val, false)
+  round_trip_prop_eq(val, true)
+}
+
+#[quickcheck]
+fn serde_round_trip_onetuple_named_struct(val: (Point,)) -> bool {
+  round_trip_prop_eq(val, true)
+}
+
+#[quickcheck]
+fn serde_round_trip_option_point(val: Option<Point>) -> bool {
+  round_trip_prop_eq(val, true)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+enum SomeEnum {
+  Foo,
+  Bar(String),
+  Baz { some: i32 }
+}
+
+impl quickcheck::Arbitrary for SomeEnum {
+  fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> SomeEnum {
+    match u64::arbitrary(g) % 2 {
+      0 => SomeEnum::Foo,
+      1 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
+      n => panic!("Unexpected value mod 2: {:?}", n)
+    }
+  }
+
+  fn shrink(&self) -> Box<Iterator<Item=SomeEnum>+'static> {
+//    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
+    match *self {
+      SomeEnum::Foo => quickcheck::empty_shrinker(),
+      SomeEnum::Bar(ref x) => {
+	let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+		      .chain(x.shrink().map(SomeEnum::Bar));
+	Box::new(chained)
+      }
+      SomeEnum::Baz { some: x } => {
+	let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+		      .chain(x.shrink().map(|n| SomeEnum::Baz { some: n}));
+	Box::new(chained)
+      } 
+    }
+  }
+}
+
+#[quickcheck]
+fn serde_round_trip_someenum(val: SomeEnum) -> bool {
+  round_trip_prop_eq(val, true)
 }
 
 fn should_raise_error_when_wrong_struct_name() {}
