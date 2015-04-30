@@ -8,10 +8,11 @@ extern crate quickcheck;
 
 use quickcheck::{Arbitrary, Gen};
 use std::{error,fmt};
-use std::io::Write;
+use std::io::{self, Write};
 use std::iter::{Iterator, FromIterator,Peekable};
 use std::sync::Arc;
 use std::rc::{self, Rc};
+use std::result::Result;
 
 use spki_sexp::*;
 
@@ -33,7 +34,7 @@ impl quickcheck::Arbitrary for Tok {
     match u64::arbitrary(g) % 3 {
       0 => Tok(SexpToken::OpenParen),
       1 => Tok(SexpToken::CloseParen),
-      2 => Tok(SexpToken::Str(quickcheck::Arbitrary::arbitrary(g))),
+      2 => Tok(SexpToken::Atom(quickcheck::Arbitrary::arbitrary(g))),
       n => panic!("Unexpected value mod 3: {:?}", n)
     }
   }
@@ -43,10 +44,10 @@ impl quickcheck::Arbitrary for Tok {
     match *self {
       Tok(SexpToken::OpenParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::CloseParen) => quickcheck::single_shrinker(Tok(SexpToken::OpenParen)),
-      Tok(SexpToken::Str(ref x)) => {
+      Tok(SexpToken::Atom(ref x)) => {
 	let chained = quickcheck::single_shrinker(Tok(SexpToken::CloseParen))
 		      .chain(quickcheck::single_shrinker(Tok(SexpToken::OpenParen)))
-		      .chain(x.shrink().map(SexpToken::Str).map(Tok));
+		      .chain(x.shrink().map(SexpToken::Atom).map(Tok));
 	Box::new(chained)
       }
     }
@@ -127,8 +128,9 @@ impl<'a> quickcheck::Arbitrary for ASexp {
 	Box::new(chained)
       }
       ASexp::List(ref l) => {
-	let chained = quickcheck::single_shrinker(ASexp::Atom("shrunken-list".to_string().into_bytes()))
-		      .chain(l.shrink().map(|l| ASexp::List(Arc::new(l))));
+	let chained = l.shrink().map(|l| ASexp::List(Arc::new(l)))
+		      .chain(quickcheck::single_shrinker(ASexp::Atom("shrunken-list".to_string().into_bytes())))
+		      .map(|x| { writeln!(std::io::stderr(),"shrunk: {:?}", x).unwrap(); x }) ;
 	Box::new(chained)
       }
     }
@@ -137,8 +139,13 @@ impl<'a> quickcheck::Arbitrary for ASexp {
 
 
 #[quickcheck]
-fn wheeeeeee(val : ASexp) -> bool {
+fn round_trip_sexp_tree(val : ASexp) -> bool {
   let v = val.desexp();
   // writeln!(std::io::stderr(),"wheee: {:?}", val).unwrap();
-  true
+  let mut buf = vec![];
+  v.write_to(&mut buf).unwrap();
+  // writeln!(std::io::stderr(),"wheee: {:?}", vec8_as_str(&buf)).unwrap();
+  let decd = SexpInfo::read_from(&mut io::Cursor::new(buf.clone())).unwrap();
+  // writeln!(std::io::stderr(),"result: {:?} -> {:?} -> {:?}; {:?}", v, vec8_as_str(&buf), decd, v == decd).unwrap();
+  decd == v
 }
