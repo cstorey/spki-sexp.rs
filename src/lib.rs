@@ -11,6 +11,7 @@ extern crate rand;
 use std::io::{self, Write};
 use std::iter::{Iterator, FromIterator,Peekable};
 use std::{error,fmt};
+use std::rc::Rc;
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum SexpToken {
@@ -89,3 +90,8 @@ fn read_string<'a, I>(it : &mut Peekable<I>) -> String where I : Iterator<Item=u
   s.into_owned()
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum SexpInfo {
+  Atom(Vec<u8>),
+  List(Rc<Vec<SexpInfo>>)
+}
