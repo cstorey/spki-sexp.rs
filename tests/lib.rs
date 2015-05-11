@@ -5,6 +5,8 @@
 
 extern crate spki_sexp;
 extern crate quickcheck;
+extern crate rustc_serialize;
+extern crate num;
 
 use quickcheck::{Arbitrary, Gen};
 use std::{error,fmt};
@@ -13,6 +15,8 @@ use std::iter::{Iterator, FromIterator,Peekable};
 use std::sync::Arc;
 use std::rc::{self, Rc};
 use std::result::Result;
+
+use rustc_serialize::{Decodable, Encodable};
 
 use spki_sexp::*;
 
@@ -59,9 +63,9 @@ impl quickcheck::Arbitrary for Tok {
 fn round_trip_tokens(toks : Vec<Tok>) -> bool {
   let toks : Vec<SexpToken> = toks.iter().map(detok).collect();
 //   writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
-  let encd = encode((&toks).iter());
+  let encd = encode((&toks).iter()).unwrap();
 //   writeln!(std::io::stderr(),"{:?}", vec8_as_str(&encd)).unwrap();
-  let mut res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
+  let mut res = Vec::from_iter(tokenise(encd.iter().map(|p|p.clone())));
 //   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, vec8_as_str(&encd), res, res == toks).unwrap();
   res == toks
 }
@@ -149,3 +153,48 @@ fn round_trip_sexp_tree(val : ASexp) -> bool {
   // writeln!(std::io::stderr(),"result: {:?} -> {:?} -> {:?}; {:?}", v, vec8_as_str(&buf), decd, v == decd).unwrap();
   decd == v
 }
+
+fn round_trip_prop<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, verbose: bool, equalish: fn(&T, &T) -> bool) -> bool{
+  let encd = spki_sexp::to_bytes(&val).unwrap();
+  if verbose { writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap(); };
+  let dec = spki_sexp::from_bytes::<T>(encd.as_slice());
+  if verbose { writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap(); };
+  equalish(&dec.unwrap(), &val)
+}
+
+fn round_trip_prop_eq<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, verbose: bool) -> bool{
+  round_trip_prop(val, verbose, std::cmp::PartialEq::eq)
+}
+
+trait Epsilon { fn eps() -> Self; }
+
+impl Epsilon for f64 { fn eps() -> f64 { 0.00001f64 } }
+impl Epsilon for f32 { fn eps() -> f32 { 0.00001f32 } }
+
+fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
+  let max = x.abs().max(y.abs());
+  if max == T::zero() {
+    true
+  } else {
+    let delta = x.abs_sub(*y) / max;
+    let ret = delta <= T::eps();
+    ret
+  }
+}
+
+#[quickcheck] fn round_trip_unit(val: ()) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_bool(val: bool) -> bool { round_trip_prop_eq(val, false) }
+
+#[quickcheck] fn round_trip_usize(val: usize) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_u64(val: u64) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_u8(val: u8) -> bool { round_trip_prop_eq(val, false) }
+
+#[quickcheck] fn round_trip_isize(val: isize) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_i64(val: i64) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_i8(val: i8) -> bool { round_trip_prop_eq(val, false) }
+
+#[quickcheck] fn round_trip_f64(val: f64) -> bool { round_trip_prop(val, false, close_enough::<f64>) }
+#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, false, close_enough::<f32>) }
+
+#[quickcheck] fn round_trip_char(val: char) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_string(val: String) -> bool { round_trip_prop_eq(val, false) }
