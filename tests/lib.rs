@@ -198,3 +198,6 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 
 #[quickcheck] fn round_trip_char(val: char) -> bool { round_trip_prop_eq(val, false) }
 #[quickcheck] fn round_trip_string(val: String) -> bool { round_trip_prop_eq(val, false) }
+
+#[quickcheck] fn round_trip_tuple_u64_u64(val: (u64,u64)) -> bool { round_trip_prop_eq(val, false) }
+#[quickcheck] fn round_trip_vec_u64(val: Vec<u64>) -> bool { round_trip_prop_eq(val, false) }

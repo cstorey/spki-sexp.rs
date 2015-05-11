@@ -197,7 +197,7 @@ impl std::convert::From<io::Error> for EncoderError{
 pub enum DecoderError {
   TokenError(Error),
   ApplicationError(String),
-  SyntaxError(SexpInfo),
+  SyntaxError(&'static str, SexpInfo),
   ParseIntError(std::num::ParseIntError),
   ParseFloatError(std::num::ParseFloatError),
   ParseBoolError(std::str::ParseBoolError)
@@ -282,13 +282,13 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
     -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
     {
-      unimplemented!()
+      panic!("emit_enum_variant")
     }
 
   fn emit_enum_variant_arg<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_enum_variant_arg")
   }
 
   fn emit_enum_struct_variant<F>(&mut self,
@@ -298,7 +298,7 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
       f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_enum_struct_variant")
   }
 
   fn emit_enum_struct_variant_field<F>(&mut self,
@@ -307,20 +307,20 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
       f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_enum_struct_variant_field")
   }
 
 
   fn emit_struct<F>(&mut self, _: &str, len: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_struct")
   }
 
   fn emit_struct_field<F>(&mut self, name: &str, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_struct_field")
   }
 
   fn emit_tuple<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
@@ -362,31 +362,34 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
   fn emit_seq<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
+    try!(f(self));
+    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
+    Ok(())
   }
 
   fn emit_seq_elt<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    f(self)
   }
 
   fn emit_map<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_map")
   }
 
   fn emit_map_elt_key<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_map_elt_key")
   }
 
   fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    unimplemented!()
+    panic!("emit_map_elt_val")
   }
 }
 
@@ -403,7 +406,7 @@ macro_rules! parse_atom {
     fn $name(&mut self) -> DecodeResult<$ty> {
       match &self.0 {
 	&SexpInfo::Atom(ref s) => Ok(try!(String::from_utf8_lossy(s).parse::<$ty>())),
-	  other => Err(DecoderError::SyntaxError(other.clone()))
+	  other => Err(DecoderError::SyntaxError("parse_atom", other.clone()))
       }
     }
   }
@@ -416,7 +419,7 @@ impl rustc_serialize::Decoder for Decoder {
       // writeln!(std::io::stderr(),"read_nil");
       match &self.0 {
 	&SexpInfo::Atom(ref s) if s == b"nil" => Ok(()),
-	other => Err(DecoderError::SyntaxError(other.clone()))
+	other => Err(DecoderError::SyntaxError("read_nil", other.clone()))
       }
     }
 
@@ -444,10 +447,10 @@ impl rustc_serialize::Decoder for Decoder {
 	  if s.chars().count() == 1 {
 	     Ok(s.chars().next().unwrap())
 	  } else {
-	    Err(DecoderError::SyntaxError(self.0.clone()))
+	    Err(DecoderError::SyntaxError("read_char", self.0.clone()))
 	  }
 	},
-	other => Err(DecoderError::SyntaxError(other.clone()))
+	other => Err(DecoderError::SyntaxError("read_char", other.clone()))
       }
     }
 
@@ -457,7 +460,7 @@ impl rustc_serialize::Decoder for Decoder {
 	  let s = String::from_utf8_lossy(bytes);
 	  Ok(s.into_owned())
 	},
-	other => Err(DecoderError::SyntaxError(other.clone()))
+	other => Err(DecoderError::SyntaxError("read_str", other.clone()))
       }
     }
 
@@ -483,7 +486,7 @@ impl rustc_serialize::Decoder for Decoder {
     fn read_enum_struct_variant<T, F>(&mut self, names: &[&str], f: F) -> DecodeResult<T> where
         F: FnMut(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_enum_struct_variant")
     }
 
 
@@ -500,7 +503,7 @@ impl rustc_serialize::Decoder for Decoder {
     fn read_struct<T, F>(&mut self, _name: &str, _len: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_struct")
     }
 
     fn read_struct_field<T, F>(&mut self,
@@ -510,19 +513,19 @@ impl rustc_serialize::Decoder for Decoder {
                                -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_struct_field")
     }
 
     fn read_tuple<T, F>(&mut self, tuple_len: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      self.read_seq(move |d, len| { f(d) })
     }
 
     fn read_tuple_arg<T, F>(&mut self, idx: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      self.read_seq_elt(idx, f)
     }
 
     fn read_tuple_struct<T, F>(&mut self,
@@ -532,7 +535,7 @@ impl rustc_serialize::Decoder for Decoder {
                                -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_tuple_struct")
     }
 
     fn read_tuple_struct_arg<T, F>(&mut self,
@@ -541,43 +544,55 @@ impl rustc_serialize::Decoder for Decoder {
                                    -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_tuple_struct_arg")
     }
 
     fn read_option<T, F>(&mut self, mut f: F) -> DecodeResult<T> where
         F: FnMut(&mut Decoder, bool) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_option")
     }
 
     fn read_seq<T, F>(&mut self, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      unimplemented!()
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => {
+	  f(self, l.len())
+	},
+	other => Err(DecoderError::SyntaxError("read_seq", other.clone()))
+      }
     }
 
     fn read_seq_elt<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-        f(self)
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => {
+	  f(&mut Decoder(l[_idx].clone()))
+	},
+	other => Err(DecoderError::SyntaxError("read_seq_elt", other.clone()))
+      }
     }
 
     fn read_map<T, F>(&mut self, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      unimplemented!()
+      panic!("read_map")
     }
 
     fn read_map_elt_key<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-        f(self)
+      writeln!(std::io::stderr(),"read_map_elt_key: {:?}" , self.0).unwrap();
+	f(self)
     }
 
     fn read_map_elt_val<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-        f(self)
+      writeln!(std::io::stderr(),"read_map_elt_val: {:?}" , self.0).unwrap();
+      f(self)
     }
 
     fn error(&mut self, err: &str) -> DecoderError {
