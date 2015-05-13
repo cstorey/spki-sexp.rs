@@ -164,6 +164,7 @@ fn round_trip_prop<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, v
     if verbose { writeln!(std::io::stderr(),"-> {:?}", equalish(&decoded, &val)).unwrap(); };
     equalish(&decoded, &val)
   } else {
+    if verbose { writeln!(std::io::stderr(),"-> {:?}", dec).unwrap(); };
     false
   }
 }
@@ -175,7 +176,7 @@ fn round_trip_prop_eq<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T
 trait Epsilon { fn eps() -> Self; }
 
 impl Epsilon for f64 { fn eps() -> f64 { 0.00001f64 } }
-impl Epsilon for f32 { fn eps() -> f32 { 0.00001f32 } }
+impl Epsilon for f32 { fn eps() -> f32 { 0.0001f32 } }
 
 fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
   let max = x.abs().max(y.abs());
@@ -183,8 +184,7 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
     true
   } else {
     let delta = x.abs_sub(*y) / max;
-    let ret = delta <= T::eps();
-    ret
+    delta <= T::eps()
   }
 }
 
@@ -200,7 +200,7 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 #[quickcheck] fn round_trip_i8(val: i8) -> bool { round_trip_prop_eq(val, false) }
 
 #[quickcheck] fn round_trip_f64(val: f64) -> bool { round_trip_prop(val, false, close_enough::<f64>) }
-#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, false, close_enough::<f32>) }
+#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, true, close_enough::<f32>) }
 
 #[quickcheck] fn round_trip_char(val: char) -> bool { round_trip_prop_eq(val, false) }
 #[quickcheck] fn round_trip_string(val: String) -> bool { round_trip_prop_eq(val, false) }
@@ -223,3 +223,40 @@ struct TupleStruct(i32, i32, String);
 #[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 struct NameStruct { x: String, y: String }
 #[quickcheck] fn round_trip_name_struct(val: (String, String)) -> bool { match val { (a,b) => round_trip_prop_eq(NameStruct{x:a,y:b}, false) } }
+
+#[derive(Clone,PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
+enum SomeEnum {
+  Foo,
+  Bar(String),
+  Baz { some: i32 }
+}
+
+impl quickcheck::Arbitrary for SomeEnum {
+  fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> SomeEnum {
+    match u64::arbitrary(g) % 3 {
+      0 => SomeEnum::Foo,
+      1 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
+      2 => SomeEnum::Baz { some: quickcheck::Arbitrary::arbitrary(g) },
+      n => panic!("Unexpected value mod 2: {:?}", n)
+    }
+  }
+
+  fn shrink(&self) -> Box<Iterator<Item=SomeEnum>+'static> {
+//    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
+    match *self {
+      SomeEnum::Foo => quickcheck::empty_shrinker(),
+      SomeEnum::Bar(ref x) => {
+        let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+                      .chain(x.shrink().map(SomeEnum::Bar));
+        Box::new(chained)
+      }
+      SomeEnum::Baz { some: x } => {
+        let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+                      .chain(x.shrink().map(|n| SomeEnum::Baz { some: n}));
+        Box::new(chained)
+      }
+    }
+  }
+}
+
+#[quickcheck] fn round_trip_some_enum(val: SomeEnum) -> bool { round_trip_prop_eq(val, false) }

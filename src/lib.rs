@@ -268,9 +268,10 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
 
   fn emit_str(&mut self, v: &str) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
 
-  fn emit_enum<F>(&mut self, _name: &str, f: F) -> EncodeResult<()> where
+  fn emit_enum<F>(&mut self, name: &str, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
+//    writeln!(std::io::stderr(),"emit_enum {:?}" , name).unwrap();
     f(self)
   }
 
@@ -282,13 +283,19 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
     -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
     {
-      panic!("emit_enum_variant")
+//      writeln!(std::io::stderr(),"emit_enum_variant name:{:?}; id:{:?}; count:{:?}" , name, _id, cnt).unwrap();
+      try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
+      try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
+      try!(f(self));
+      try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
+      Ok(())
     }
 
   fn emit_enum_variant_arg<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_enum_variant_arg")
+//    writeln!(std::io::stderr(),"emit_enum_variant_arg idx:{:?}", idx).unwrap();
+    f(self)
   }
 
   fn emit_enum_struct_variant<F>(&mut self,
@@ -298,7 +305,7 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
       f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_enum_struct_variant")
+    panic!("emit_enum_struct_variant; does not seem to be needed")
   }
 
   fn emit_enum_struct_variant_field<F>(&mut self,
@@ -307,7 +314,7 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
       f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_enum_struct_variant_field")
+    panic!("emit_enum_struct_variant_field; does not seem to be needed")
   }
 
 
@@ -488,30 +495,56 @@ impl rustc_serialize::Decoder for Decoder {
                                mut f: F) -> DecodeResult<T>
         where F: FnMut(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      unimplemented!()
+//      writeln!(std::io::stderr(),"read_enum_variant: {:?}, {:?}", names, &self.0).unwrap();
+      let variant = { 
+	let l = match &self.0 {
+	  &SexpInfo::List(ref l) if l.len() > 0 => l,
+	  other => return Err(DecoderError::SyntaxError("read_struct: outer", other.clone()))
+	};
+//	writeln!(std::io::stderr(),"read_enum_variant: l: {:?}", l).unwrap();
+	let name = match &l[0] {
+	  &SexpInfo::Atom(ref atom) => String::from_utf8_lossy(atom),
+	  other => return Err(DecoderError::SyntaxError("read_struct: get name", other.clone()))
+	};
+//	writeln!(std::io::stderr(),"read_enum_variant: name: {:?}", name).unwrap();
+	match names.iter().position(|n| *n == name) {
+	  Some(i) => i,
+	  None => return Err(DecoderError::SyntaxError("read_struct: lookup variant", self.0.clone()))
+	}
+      };
+
+      f(self, variant)
     }
 
     fn read_enum_variant_arg<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-        f(self)
+//      writeln!(std::io::stderr(),"read_enum_variant_arg: {:?}, {:?}", _idx, &self.0).unwrap();
+      let l = match &self.0 {
+	&SexpInfo::List(ref l) if l.len() > 0 => l,
+	  other => return Err(DecoderError::SyntaxError("read_struct: outer", other.clone()))
+      };
+      let off = _idx+1;
+      f(&mut Decoder(l[off].clone()))
     }
 
     fn read_enum_struct_variant<T, F>(&mut self, names: &[&str], f: F) -> DecodeResult<T> where
         F: FnMut(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      panic!("read_enum_struct_variant")
+//      writeln!(std::io::stderr(),"read_enum_struct_variant: {:?}, {:?}", names, &self.0).unwrap();
+      panic!("read_enum_struct_variant; does not seem to be needed")
     }
 
 
     fn read_enum_struct_variant_field<T, F>(&mut self,
-                                         _name: &str,
+                                         name: &str,
                                          idx: usize,
                                          f: F)
                                          -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-        self.read_enum_variant_arg(idx, f)
+//      writeln!(std::io::stderr(),"read_enum_struct_variant_field: {:?}, {:?}, {:?}", name, idx, &self.0).unwrap();
+      self.read_enum_variant_arg(idx, f)
     }
 
     fn read_struct<T, F>(&mut self, name: &str, len: usize, f: F) -> DecodeResult<T> where
@@ -568,7 +601,7 @@ impl rustc_serialize::Decoder for Decoder {
                                -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      panic!("read_tuple_struct")
+      panic!("read_tuple_struct; does not seem to be needed")
     }
 
     fn read_tuple_struct_arg<T, F>(&mut self,
@@ -577,7 +610,7 @@ impl rustc_serialize::Decoder for Decoder {
                                    -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      panic!("read_tuple_struct_arg")
+      panic!("read_tuple_struct_arg; does not seem to be needed")
     }
 
     fn read_option<T, F>(&mut self, mut f: F) -> DecodeResult<T> where
