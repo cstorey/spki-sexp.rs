@@ -216,3 +216,10 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 #[test] fn parse_bad_some_ok() { assert_eq!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some2:99)").unwrap(), Some(99)) }
 
 #[quickcheck] fn round_trip_map_u64_u64(val: HashMap<u64,u64>) -> bool { round_trip_prop_eq(val, false) }
+
+#[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
+struct TupleStruct(i32, i32, String);
+#[quickcheck] fn round_trip_tpl_struct(val: (i32,i32, String)) -> bool { match val { (a,b,c) => round_trip_prop_eq(TupleStruct(a,b,c), false) } }
+#[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
+struct NameStruct { x: String, y: String }
+#[quickcheck] fn round_trip_name_struct(val: (String, String)) -> bool { match val { (a,b) => round_trip_prop_eq(NameStruct{x:a,y:b}, false) } }

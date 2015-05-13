@@ -311,16 +311,21 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
   }
 
 
-  fn emit_struct<F>(&mut self, _: &str, len: usize, f: F) -> EncodeResult<()> where
+  fn emit_struct<F>(&mut self, name: &str, len: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_struct")
+    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
+    try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
+    try!(f(self));
+    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
+    Ok(())
   }
 
   fn emit_struct_field<F>(&mut self, name: &str, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_struct_field")
+    try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
+    f(self)
   }
 
   fn emit_tuple<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
@@ -509,10 +514,17 @@ impl rustc_serialize::Decoder for Decoder {
         self.read_enum_variant_arg(idx, f)
     }
 
-    fn read_struct<T, F>(&mut self, _name: &str, _len: usize, f: F) -> DecodeResult<T> where
+    fn read_struct<T, F>(&mut self, name: &str, len: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      panic!("read_struct")
+      // writeln!(std::io::stderr(),"read_struct: {:?}, {:?}; {:?}" , name, len, &self.0).unwrap();
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) if l.len() == len*2+1 && l[0] == SexpInfo::Atom(name.bytes().map(|c|c.clone()).collect()) => {
+	  f(self)
+	},
+
+	other => Err(DecoderError::SyntaxError("read_struct", other.clone()))
+      }
     }
 
     fn read_struct_field<T, F>(&mut self,
@@ -522,7 +534,19 @@ impl rustc_serialize::Decoder for Decoder {
                                -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      panic!("read_struct_field")
+      // writeln!(std::io::stderr(),"read_struct_field: {:?}, {:?}; {:?}" , name, _idx, &self.0).unwrap();
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => {
+	  let off = _idx*2+1;
+	  if l[off] == SexpInfo::Atom(name.bytes().map(|c|c.clone()).collect()) {
+	    f(&mut Decoder(l[off+1].clone()))
+	  } else {
+	    Err(DecoderError::SyntaxError("read_struct_field; wrong name", self.0.clone()))
+	  }
+	},
+
+	other => Err(DecoderError::SyntaxError("read_struct_field", other.clone()))
+      }
     }
 
     fn read_tuple<T, F>(&mut self, tuple_len: usize, f: F) -> DecodeResult<T> where
