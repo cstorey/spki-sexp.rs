@@ -15,6 +15,7 @@ use std::iter::{Iterator, FromIterator,Peekable};
 use std::sync::Arc;
 use std::rc::{self, Rc};
 use std::result::Result;
+use std::collections::HashMap;
 
 use rustc_serialize::{Decodable, Encodable};
 
@@ -159,7 +160,12 @@ fn round_trip_prop<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, v
   if verbose { writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap(); };
   let dec = spki_sexp::from_bytes::<T>(encd.as_slice());
   if verbose { writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap(); };
-  equalish(&dec.unwrap(), &val)
+  if let Ok(decoded) = dec {
+    if verbose { writeln!(std::io::stderr(),"-> {:?}", equalish(&decoded, &val)).unwrap(); };
+    equalish(&decoded, &val)
+  } else {
+    false
+  }
 }
 
 fn round_trip_prop_eq<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, verbose: bool) -> bool{
@@ -208,3 +214,5 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 #[test] fn parse_bad_some_too_many_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some1:14:spam)").is_err()) }
 #[test] fn parse_bad_some_bad_label() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(3:lol1:2)").is_err()) }
 #[test] fn parse_bad_some_ok() { assert_eq!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some2:99)").unwrap(), Some(99)) }
+
+#[quickcheck] fn round_trip_map_u64_u64(val: HashMap<u64,u64>) -> bool { round_trip_prop_eq(val, false) }

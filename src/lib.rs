@@ -383,19 +383,22 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
   fn emit_map<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_map")
+    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
+    try!(f(self));
+    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
+    Ok(())
   }
 
   fn emit_map_elt_key<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_map_elt_key")
+    f(self)
   }
 
   fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    panic!("emit_map_elt_val")
+    f(self)
   }
 }
 
@@ -593,21 +596,32 @@ impl rustc_serialize::Decoder for Decoder {
     fn read_map<T, F>(&mut self, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder, usize) -> DecodeResult<T>,
     {
-      panic!("read_map")
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => {
+	  f(self, l.len() / 2)
+	},
+	other => Err(DecoderError::SyntaxError("read_seq", other.clone()))
+      }
     }
 
     fn read_map_elt_key<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      writeln!(std::io::stderr(),"read_map_elt_key: {:?}" , self.0).unwrap();
-	f(self)
+      // writeln!(std::io::stderr(),"read_map_elt_key: {:?}, {:?}" , _idx, self.0).unwrap();
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => f(&mut Decoder(l[2*_idx].clone())),
+        other => Err(DecoderError::SyntaxError("read_map_elt_key", other.clone()))
+      }
     }
 
     fn read_map_elt_val<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
     {
-      writeln!(std::io::stderr(),"read_map_elt_val: {:?}" , self.0).unwrap();
-      f(self)
+      // writeln!(std::io::stderr(),"read_map_elt_val: {:?}, {:?}" , _idx, self.0).unwrap();
+      match &self.0.clone() {
+	&SexpInfo::List(ref l) => f(&mut Decoder(l[2*_idx+1].clone())),
+        other => Err(DecoderError::SyntaxError("read_map_elt_key", other.clone()))
+      }
     }
 
     fn error(&mut self, err: &str) -> DecoderError {
