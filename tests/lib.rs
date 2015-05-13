@@ -201,3 +201,10 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 
 #[quickcheck] fn round_trip_tuple_u64_u64(val: (u64,u64)) -> bool { round_trip_prop_eq(val, false) }
 #[quickcheck] fn round_trip_vec_u64(val: Vec<u64>) -> bool { round_trip_prop_eq(val, false) }
+
+#[quickcheck] fn round_trip_option_u64(val: Option<u64>) -> bool { round_trip_prop_eq(val, false) }
+#[test] fn parse_bad_none() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"5:nodnol").is_err()) }
+#[test] fn parse_bad_some_insufficient_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some)").is_err()) }
+#[test] fn parse_bad_some_too_many_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some1:14:spam)").is_err()) }
+#[test] fn parse_bad_some_bad_label() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(3:lol1:2)").is_err()) }
+#[test] fn parse_bad_some_ok() { assert_eq!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some2:99)").unwrap(), Some(99)) }

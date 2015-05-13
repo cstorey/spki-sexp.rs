@@ -350,13 +350,19 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
   {
     f(self)
   }
+
   fn emit_option_none(&mut self) -> EncodeResult<()> {
     self.emit_nil()
   }
+
   fn emit_option_some<F>(&mut self, f: F) -> EncodeResult<()> where
     F: FnOnce(&mut Self) -> EncodeResult<()>,
   {
-    f(self)
+    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
+    try!(encode_token(&SexpToken::Atom(b"some".iter().map(|c|c.clone()).collect()), &mut self.writer));
+    try!(f(self));
+    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
+    Ok(())
   }
 
   fn emit_seq<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
@@ -550,7 +556,16 @@ impl rustc_serialize::Decoder for Decoder {
     fn read_option<T, F>(&mut self, mut f: F) -> DecodeResult<T> where
         F: FnMut(&mut Decoder, bool) -> DecodeResult<T>,
     {
-      panic!("read_option")
+      match &self.0.clone() {
+	&SexpInfo::Atom(ref atom) if atom == b"nil" => {
+	  f(self, false)
+	},
+	&SexpInfo::List(ref l) if l.len() == 2 && l[0] == SexpInfo::Atom(b"some".iter().map(|c|c.clone()).collect()) => {
+	  f(&mut Decoder(l[1].clone()), true)
+	},
+
+	other => Err(DecoderError::SyntaxError("read_option", other.clone()))
+      }
     }
 
     fn read_seq<T, F>(&mut self, f: F) -> DecodeResult<T> where
