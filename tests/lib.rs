@@ -1,12 +1,14 @@
 #![feature(plugin, custom_attribute, custom_derive)]
 #![feature(convert)]
 #![feature(alloc)]
+#![feature(test)]
 #![plugin(quickcheck_macros)]
 
 extern crate spki_sexp;
 extern crate quickcheck;
 extern crate rustc_serialize;
 extern crate num;
+extern crate test;
 
 use quickcheck::{Arbitrary, Gen};
 use std::{error,fmt};
@@ -16,10 +18,13 @@ use std::sync::Arc;
 use std::rc::{self, Rc};
 use std::result::Result;
 use std::collections::HashMap;
+use std::iter;
 
 use rustc_serialize::{Decodable, Encodable};
+use test::Bencher;
 
 use spki_sexp::*;
+use spki_sexp::SexpInfo::*;
 
 fn vec8_as_str(v :&Vec<u8>) -> String {
   String::from_utf8_lossy(v).into_owned()
@@ -200,7 +205,7 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
 #[quickcheck] fn round_trip_i8(val: i8) -> bool { round_trip_prop_eq(val, false) }
 
 #[quickcheck] fn round_trip_f64(val: f64) -> bool { round_trip_prop(val, false, close_enough::<f64>) }
-#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, true, close_enough::<f32>) }
+#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, false, close_enough::<f32>) }
 
 #[quickcheck] fn round_trip_char(val: char) -> bool { round_trip_prop_eq(val, false) }
 #[quickcheck] fn round_trip_string(val: String) -> bool { round_trip_prop_eq(val, false) }
@@ -260,3 +265,61 @@ impl quickcheck::Arbitrary for SomeEnum {
 }
 
 #[quickcheck] fn round_trip_some_enum(val: SomeEnum) -> bool { round_trip_prop_eq(val, false) }
+
+fn bench_emit(b: &mut Bencher, v: SexpInfo) {
+  let mut buf = vec![];
+  v.write_to(&mut buf).unwrap();
+
+  b.bytes = buf.len() as u64;
+// writeln!(std::io::stderr(),"size: {:?}", buf.len()).unwrap();
+  b.iter(|| v.write_to(&mut buf).unwrap() )
+}
+
+fn bench_read(b: &mut Bencher, v: SexpInfo) {
+  let mut buf = vec![];
+  v.write_to(&mut buf).unwrap();
+
+  b.bytes = buf.len() as u64;
+  writeln!(std::io::stderr(),"size: {:?}", buf.len()).unwrap();
+  b.iter(|| SexpInfo::read_from(&mut io::Cursor::new(buf.clone())).unwrap() )
+}
+#[bench]
+fn bench_emit_atom(b: &mut Bencher) {
+  bench_emit(b, Atom("hello world!".into()));
+}
+
+#[bench]
+fn bench_read_atom(b: &mut Bencher) {
+  bench_read(b, Atom("Hello world!".into()))
+}
+
+#[bench]
+fn bench_emit_list(b: &mut Bencher) {
+  let a = Atom("hello world!".into());
+  let l = List(Rc::new(iter::repeat(a).take(64).collect()));
+  bench_emit(b, l);
+}
+
+#[bench]
+fn bench_read_list(b: &mut Bencher) {
+  let a = Atom("hello world!".into());
+  let l = List(Rc::new(iter::repeat(a).take(64).collect()));
+  bench_read(b, l)
+}
+#[bench]
+fn bench_emit_nested(b: &mut Bencher) {
+  let a = Atom("hello world!".into());
+  let l = List(Rc::new(iter::repeat(a).take(8).collect()));
+  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
+  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
+  bench_emit(b, l);
+}
+
+#[bench]
+fn bench_read_nested(b: &mut Bencher) {
+  let a = Atom("hello world!".into());
+  let l = List(Rc::new(iter::repeat(a).take(8).collect()));
+  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
+  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
+  bench_read(b, l)
+}
