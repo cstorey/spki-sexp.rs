@@ -1,14 +1,10 @@
 sudo: false
+language: rust
+
 cache:
   directories:
     - $HOME/.cargo
-    - $HOME/.multirust
-    - $HOME/opt
     - target
 
-env:
-  - RUST_VERSION=nightly-2015-04-22
-
 script:
-  - build/01-setup.sh
   - build/02-build.sh
