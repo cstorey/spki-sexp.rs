@@ -5,7 +5,7 @@ extern crate num;
 #[cfg(nightly)]
 extern crate test;
 
-use quickcheck::{Arbitrary, Gen};
+use quickcheck::{Arbitrary, Gen, quickcheck};
 use std::{error,fmt};
 use std::io::{self, Write};
 use std::iter::{Iterator, FromIterator,Peekable};
@@ -205,41 +205,56 @@ fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
   }
 }
 
-//#[quickcheck] fn round_trip_unit(val: ()) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_bool(val: bool) -> bool { round_trip_prop_eq(val, false) }
+macro_rules! qc_round_trip {
+    ($fn_name:ident, $type_a:ty) => (
+         #[test] fn $fn_name() {
+            fn prop(val: $type_a) -> bool { round_trip_prop_eq(val, false) }
+            quickcheck(prop as fn($type_a) -> bool);
+        }
+    );
+    ($fn_name:ident, $type_a:ty, $pat:pat => $expr:expr) => (
+         #[test] fn $fn_name() {
+            fn prop(val: $type_a) -> bool { let $pat = val; round_trip_prop_eq($expr, false) }
+            quickcheck(prop as fn($type_a) -> bool);
+        }
+    )
+}
 
-//#[quickcheck] fn round_trip_usize(val: usize) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_u64(val: u64) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_u8(val: u8) -> bool { round_trip_prop_eq(val, false) }
 
-//#[quickcheck] fn round_trip_isize(val: isize) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_i64(val: i64) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_i8(val: i8) -> bool { round_trip_prop_eq(val, false) }
+qc_round_trip!(round_trip_unit, ());
+qc_round_trip!(round_trip_bool, bool);
+
+qc_round_trip!(round_trip_usize, usize);
+qc_round_trip!(round_trip_u64, u64);
+qc_round_trip!(round_trip_u8, u8);
+qc_round_trip!(round_trip_isize, isize);
+qc_round_trip!(round_trip_i64, i64);
+qc_round_trip!(round_trip_i8, i8);
 
 //#[quickcheck] fn round_trip_f64(val: f64) -> bool { round_trip_prop(val, false, close_enough::<f64>) }
 //#[quickcheck] fn round_trip_f32(val: f32) -> bool { round_trip_prop(val, false, close_enough::<f32>) }
 
-//#[quickcheck] fn round_trip_char(val: char) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_string(val: String) -> bool { round_trip_prop_eq(val, false) }
+qc_round_trip!(round_trip_char, char);
+qc_round_trip!(round_trip_string, String);
+qc_round_trip!(round_trip_tuple_u64_u64, (u64, u64));
+qc_round_trip!(round_trip_vec_u64, Vec<u64>);
+qc_round_trip!(round_trip_option_u64, Option<u64>);
 
-//#[quickcheck] fn round_trip_tuple_u64_u64(val: (u64,u64)) -> bool { round_trip_prop_eq(val, false) }
-//#[quickcheck] fn round_trip_vec_u64(val: Vec<u64>) -> bool { round_trip_prop_eq(val, false) }
-
-//#[quickcheck] fn round_trip_option_u64(val: Option<u64>) -> bool { round_trip_prop_eq(val, false) }
 #[test] fn parse_bad_none() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"5:nodnol").is_err()) }
 #[test] fn parse_bad_some_insufficient_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some)").is_err()) }
 #[test] fn parse_bad_some_too_many_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some1:14:spam)").is_err()) }
 #[test] fn parse_bad_some_bad_label() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(3:lol1:2)").is_err()) }
 #[test] fn parse_bad_some_ok() { assert_eq!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some2:99)").unwrap(), Some(99)) }
 
-//#[quickcheck] fn round_trip_map_u64_u64(val: HashMap<u64,u64>) -> bool { round_trip_prop_eq(val, false) }
+qc_round_trip!(round_trip_map_u64_u64, HashMap<u64,u64>);
 
 #[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 struct TupleStruct(i32, i32, String);
-//#[quickcheck] fn round_trip_tpl_struct(val: (i32,i32, String)) -> bool { match val { (a,b,c) => round_trip_prop_eq(TupleStruct(a,b,c), false) } }
+qc_round_trip!(round_trip_tpl_struct, (i32,i32, String), (a,b,c) => TupleStruct(a,b,c));
+
 #[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 struct NameStruct { x: String, y: String }
-//#[quickcheck] fn round_trip_name_struct(val: (String, String)) -> bool { match val { (a,b) => round_trip_prop_eq(NameStruct{x:a,y:b}, false) } }
+qc_round_trip!(round_trip_name_struct, (String, String), (a,b) => NameStruct{ x: a, y: b });
 
 #[derive(Clone,PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 enum SomeEnum {
@@ -276,6 +291,7 @@ impl quickcheck::Arbitrary for SomeEnum {
   }
 }
 
+qc_round_trip!(round_trip_some_enum, SomeEnum);
 //#[quickcheck] fn round_trip_some_enum(val: SomeEnum) -> bool { round_trip_prop_eq(val, false) }
 
 #[cfg(nightly)]
