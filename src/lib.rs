@@ -1,11 +1,3 @@
-#![feature(custom_attribute)]
-#![feature(plugin)]
-#![feature(rand)]
-#![feature(collections)]
-#![feature(convert)]
-
-#![feature(core)]
-extern crate core;
 extern crate rand;
 extern crate rustc_serialize;
 
@@ -32,9 +24,9 @@ fn encode_token<W>(t: &SexpToken, out: &mut W) -> Result<(), io::Error> where W 
     &SexpToken::OpenParen => try!(out.write_all(&['(' as u8])),
       &SexpToken::CloseParen => try!(out.write_all(&[')' as u8])),
       &SexpToken::Atom(ref s) => {
-	try!(out.write_all(format!("{}", s.len()).into_bytes().as_slice()));
+	try!(out.write_all(&format!("{}", s.len()).into_bytes()));
 	try!(out.write_all(&[':' as u8]));
-	try!(out.write_all(s.as_slice()))
+	try!(out.write_all(&s))
       }
   }
 
@@ -111,9 +103,9 @@ impl SexpInfo {
   pub fn write_to<W: io::Write>(&self, wr: &mut W) -> Result<(), io::Error> {
     match self {
       &SexpInfo::Atom(ref v) => {
-	try!(wr.write_all(format!("{}", v.len()).into_bytes().as_slice()));
+	try!(wr.write_all(&format!("{}", v.len()).into_bytes()));
 	try!(wr.write_all(b":"));
-	try!(wr.write_all(v.as_slice()));
+	try!(wr.write_all(&v));
 	Ok(())
       },
       &SexpInfo::List(ref l) => {

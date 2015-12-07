@@ -6,7 +6,6 @@ authors = ["Ceri Storey <cez@necrofish.org.uk>"]
 
 [dependencies]
 quickcheck = "*"
-quickcheck_macros = "*"
 num = "*"
 rustc-serialize = "^0.3"
-
+rand = "*"
