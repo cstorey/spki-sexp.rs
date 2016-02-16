@@ -88,11 +88,6 @@ fn serde_round_trip_string(val: String) -> bool {
   round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
-fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
-  round_trip_prop_eq(val, false)
-}
-
 #[quickcheck]
 fn serde_round_trip_u64(val: u64) -> bool {
   round_trip_prop_eq(val, false)
@@ -130,38 +125,50 @@ fn close_enough(x: &f64, y: &f64) -> bool {
 // TODO: Also check for NaN / Infinites
 #[quickcheck]
 fn serde_round_trip_f64(val: f64) -> bool {
-  round_trip_prop(val, true, close_enough)
+  round_trip_prop(val, false, close_enough)
 }
 
-// #[quickcheck]
+#[quickcheck]
+fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_vec_u64(val: Vec<u64>) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
 fn serde_round_trip_tuple_u64(val: (u64,)) -> bool {
   round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_tuple_u64_u64(val: (u64,u64)) -> bool {
   round_trip_prop_eq(val, false)
 }
-// #[quickcheck]
+
+#[quickcheck]
 fn serde_round_trip_tuple_u64_u64_u64(val: (u64,u64,u64)) -> bool {
   round_trip_prop_eq(val, false)
 }
-// #[quickcheck]
+
+#[quickcheck]
 fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
   round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> bool {
-  round_trip_prop_eq(val, true)
+  round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_option_u64(val: Option<u64>) -> bool {
   round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_option_string(val: Option<String>) -> bool {
   round_trip_prop_eq(val, false)
 }

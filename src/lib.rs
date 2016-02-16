@@ -200,10 +200,10 @@ impl<I> Deserializer<I> where I : Iterator<Item=u8> {
      visitor.visit_seq(ListParser{ de: self })
    }
 // 
-//   fn parse_map<V>(&mut self, mut visitor: V, name: &str) -> Result<V::Value, Error> where V : de::Visitor {
-//     writeln!(std::io::stderr(), "Deserializer::parse_map({}): {:?}", name, self.iter.peek());
-//     visitor.visit_map(MapParser{ de: self })
-//   }
+   fn parse_map<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+     // writeln!(std::io::stderr(), "Deserializer::parse_map(): {:?}", self.iter.peek());
+     visitor.visit_map(MapParser{ de: self })
+   }
 
   fn parse_bool<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
     writeln!(std::io::stderr(), "Deserializer::parse_bool: {:?}", self.iter.peek());
@@ -368,18 +368,29 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 
 
 // 
-//   fn visit_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//     self.parse_option(visitor)
-//   }
-   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-     writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
-     // panic!("Unsupported visitation: {}", "visit_seq")
-     self.parse_list(visitor)
+   fn visit_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+     self.parse_option(visitor)
    }
-//   fn visit_map<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+
+   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+     // writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
+     // panic!("Unsupported visitation: {}", "visit_seq")
+     match self.iter.next() {
+            Some(SexpToken::OpenParen) => self.parse_list(visitor),
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen])),
+            None => Err(Error::EofError),
+        }
+   }
+   fn visit_map<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //     writeln!(std::io::stderr(), "Deserializer::visit_map").unwrap();
-//     self.parse_map(visitor, MAP)
-//   }
+     match self.iter.next() {
+            Some(SexpToken::OpenParen) => self.parse_map(visitor),
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen])),
+            None => Err(Error::EofError),
+        }
+
+     
+   }
 //   fn visit_struct<V>(&mut self, name: &'static str, _fields: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
 //         where V: de::Visitor {
 //     writeln!(std::io::stderr(), "Deserializer::visit_struct: {}, {:?}", name, _fields).unwrap();
@@ -475,53 +486,53 @@ impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
     }
   }
 }
-// 
-// struct MapParser<'a, I: Iterator<Item=u8> + 'a> {
-//   de: &'a mut Deserializer<I>
-// }
-// 
-// impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
-//   type Error = Error;
-//   fn visit_key<K>(&mut self) -> Result<Option<K>, Error> where K : de::Deserialize {
-//     writeln!(std::io::stderr(), "MapParser::visit_key: peek: {:?}", self.de.iter.peek()).unwrap();
-//     match self.de.iter.peek() {
-//       Some(&SexpToken::CloseParen) => {
-// 	let _ = self.de.iter.next().unwrap();
-// 	writeln!(std::io::stderr(), "MapParser::visit_key: closed: {:?}", self.de.iter.peek()).unwrap();
-// 	Ok(None)
-//       }
-//       None => Err(Error::EofError),
-//       _ => {
-// //	let _ = self.de.iter.next().unwrap();
-// 	writeln!(std::io::stderr(), "MapParser::visit_key: read key @{:?}", self.de.iter.peek());
-// 	let val = try!(de::Deserialize::deserialize(self.de));
-// 	Ok(Some(val))
-//       }
-//     }
-//   }
-// 
-//   fn visit_value<V>(&mut self) -> Result<V, Error> where V : de::Deserialize {
-// //    writeln!(std::io::stderr(), "MapParser::visit_value: peek: {:?}", self.de.iter.peek()).unwrap();
-//     let current = self.de.iter.peek().map(|p| p.clone());
-//     match current {
-//       Some(tok @ SexpToken::CloseParen) => {
-// 	Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::Str("Any value, honest".to_string())]))
-//       }
-//       None => Err(Error::EofError),
-//       _ => {
-// //	writeln!(std::io::stderr(), "MapParser::visit_key: read value");
-// 	let val = try!(de::Deserialize::deserialize(self.de));
-// 	Ok(val)
-//       }
-//     }
-//   }
-// 
-//   fn end(&mut self) -> Result<(), Error> {
-//     let cur = self.de.iter.peek().map(|p| p.clone());
-// //     writeln!(std::io::stderr(), "MapParser::end: peek: {:?}", self.de.iter.peek()).unwrap();
-//     Ok(())
-//   }
-// }
+
+struct MapParser<'a, I: Iterator<Item=u8> + 'a> {
+  de: &'a mut Deserializer<I>
+}
+
+impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
+  type Error = Error;
+  fn visit_key<K>(&mut self) -> Result<Option<K>, Error> where K : de::Deserialize {
+    // writeln!(std::io::stderr(), "MapParser::visit_key: peek: {:?}", self.de.iter.peek()).unwrap();
+    match self.de.iter.peek() {
+      Some(&SexpToken::CloseParen) => {
+	let _ = self.de.iter.next().unwrap();
+	// writeln!(std::io::stderr(), "MapParser::visit_key: closed: {:?}", self.de.iter.peek()).unwrap();
+	Ok(None)
+      }
+      None => Err(Error::EofError),
+      _ => {
+//	let _ = self.de.iter.next().unwrap();
+	// writeln!(std::io::stderr(), "MapParser::visit_key: read key @{:?}", self.de.iter.peek());
+	let val = try!(de::Deserialize::deserialize(self.de));
+	Ok(Some(val))
+      }
+    }
+  }
+
+  fn visit_value<V>(&mut self) -> Result<V, Error> where V : de::Deserialize {
+//    writeln!(std::io::stderr(), "MapParser::visit_value: peek: {:?}", self.de.iter.peek()).unwrap();
+    let current = self.de.iter.peek().map(|p| p.clone());
+    match current {
+      Some(tok @ SexpToken::CloseParen) => {
+	Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::Str("Any value, honest".to_string())]))
+      }
+      None => Err(Error::EofError),
+      _ => {
+//	writeln!(std::io::stderr(), "MapParser::visit_key: read value");
+	let val = try!(de::Deserialize::deserialize(self.de));
+	Ok(val)
+      }
+    }
+  }
+
+  fn end(&mut self) -> Result<(), Error> {
+    let cur = self.de.iter.peek().map(|p| p.clone());
+//     writeln!(std::io::stderr(), "MapParser::end: peek: {:?}", self.de.iter.peek()).unwrap();
+    Ok(())
+  }
+}
 
 struct Serializer<W> {
   writer : W
@@ -601,7 +612,6 @@ impl<W> Serializer<W> where W : Write {
   fn visit_seq<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
     // writeln!(std::io::stderr(), "Serializer::visit_seq").unwrap();
     try!(self.open());
-    try!(self.write_str(SEQ.to_string()));
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
   }
@@ -621,7 +631,6 @@ impl<W> Serializer<W> where W : Write {
   fn visit_map<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::MapVisitor {
 //    writeln!(std::io::stderr(), "Serializer::visit_map").unwrap();
     try!(self.open());
-    try!(self.write_str(MAP.to_string()));
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
   }
