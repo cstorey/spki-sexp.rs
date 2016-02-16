@@ -1,15 +1,11 @@
 [package]
+authors = ["Ceri Storey <cez@necrofish.org.uk>"]
 name = "spki-sexp"
 version = "0.0.1"
-authors = ["Ceri Storey <cez@necrofish.org.uk>"]
-
 
 [dependencies]
 quickcheck = "*"
 quickcheck_macros = "*"
-
-serde = "^0.3.2"
-serde_macros = "^0.3.2"
-
-#[dependencies.serde]
-#git = "https://github.com/erickt/rust-serde.git"
+rand = "0.3.14"
+serde = "0.6.13"
+serde_macros = "0.6.13"
