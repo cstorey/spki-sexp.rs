@@ -181,7 +181,7 @@ impl quickcheck::Arbitrary for MyUnityType {
   }
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_unity_struct(val: MyUnityType) -> bool {
   round_trip_prop_eq(val, false)
 }
@@ -195,7 +195,7 @@ impl quickcheck::Arbitrary for StructTuple {
   }
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_struct_tuple(val: StructTuple) -> bool {
   round_trip_prop_eq(val, false)
 }
@@ -212,19 +212,19 @@ impl quickcheck::Arbitrary for Point {
   }
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_named_struct(val: Point) -> bool {
-  round_trip_prop_eq(val, true)
+  round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_onetuple_named_struct(val: (Point,)) -> bool {
-  round_trip_prop_eq(val, true)
+  round_trip_prop_eq(val, false)
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_option_point(val: Option<Point>) -> bool {
-  round_trip_prop_eq(val, true)
+  round_trip_prop_eq(val, false)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

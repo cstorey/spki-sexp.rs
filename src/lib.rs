@@ -391,11 +391,17 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 
      
    }
-//   fn visit_struct<V>(&mut self, name: &'static str, _fields: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
-//         where V: de::Visitor {
-//     writeln!(std::io::stderr(), "Deserializer::visit_struct: {}, {:?}", name, _fields).unwrap();
-//     self.parse_map(visitor, name)
-//   }
+   fn visit_struct<V>(&mut self, name: &'static str, _fields: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
+         where V: de::Visitor {
+     // writeln!(std::io::stderr(), "Deserializer::visit_struct: {}, {:?}", name, _fields).unwrap();
+     self.visit_map(visitor)
+   }
+
+    fn visit_struct_field<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error>
+        where V: de::Visitor,
+    {
+        self.visit_string(visitor)
+    }
 // 
 //   fn visit_unit_struct<V>(&mut self, _name: &'static str, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
 //     writeln!(std::io::stderr(), "Deserializer::visit_named_unit: {}", _name).unwrap();
