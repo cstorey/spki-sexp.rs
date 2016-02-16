@@ -1,5 +1,4 @@
 #![feature(plugin, custom_attribute, custom_derive)]
-#![feature(convert)]
 #![plugin(quickcheck_macros)]
 #![plugin(serde_macros)]
 
@@ -7,11 +6,11 @@ extern crate serde;
 extern crate spki_sexp;
 extern crate quickcheck;
 
-use quickcheck::{Arbitrary, Gen};
+use quickcheck::{Arbitrary};
 use serde::{ser,de};
-use std::{error,fmt};
+use std::fmt;
 use std::io::Write;
-use std::iter::{Iterator, FromIterator,Peekable};
+use std::iter::{Iterator, FromIterator};
 
 use spki_sexp::*;
 
@@ -60,7 +59,7 @@ fn round_trip_tokens(toks : Vec<Tok>) -> bool {
 //   writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
   let encd = encode((&toks).iter());
 //   writeln!(std::io::stderr(),"{:?}", vec8_as_str(&encd)).unwrap();
-  let mut res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
+  let res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
 //   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, vec8_as_str(&encd), res, res == toks).unwrap();
   res == toks
 }
@@ -176,7 +175,7 @@ fn serde_round_trip_option_string(val: Option<String>) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct MyUnityType;
 impl quickcheck::Arbitrary for MyUnityType {
-  fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> MyUnityType {
+  fn arbitrary<G: quickcheck::Gen>(_ : &mut G) -> MyUnityType {
     MyUnityType
   }
 }
@@ -267,5 +266,5 @@ impl quickcheck::Arbitrary for SomeEnum {
 
 #[quickcheck]
 fn serde_round_trip_someenum(val: SomeEnum) -> bool {
-  round_trip_prop_eq(val, true)
+  round_trip_prop_eq(val, false)
 }
