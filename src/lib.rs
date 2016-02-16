@@ -424,12 +424,11 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 //     }
 //   }
 // 
-//   fn visit_enum<V>(&mut self, _enum: &'static str, _variants: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
-//         where V: de::EnumVisitor {
-//     writeln!(std::io::stderr(), "Deserializer::visit_enum: {}", _enum);
-//     visitor.visit(EnumParser{de: self});
-//     unimplemented!()
-//   }
+  fn visit_enum<V>(&mut self, _enum: &'static str, variants: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
+        where V: de::EnumVisitor {
+    writeln!(std::io::stderr(), "Deserializer::visit_enum: {}/{:?}", _enum, variants);
+    visitor.visit(EnumParser{de: self, variants: variants})
+  }
 // 
 //   fn visit_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
 //         where V: de::Visitor {
@@ -438,28 +437,51 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 //   }
 }
 
-// struct EnumParser<'a, I: Iterator<Item=u8> + 'a> {
-//   de: &'a mut Deserializer<I>
-// }
-// 
-// impl<'a, I: Iterator<Item=u8> + 'a> de::VariantVisitor for EnumParser<'a, I> {
-//   type Error = Error;
-//   fn visit_variant<V>(&mut self) -> Result<V, Self::Error>{
-//     unimplemented!();
-//   }
-// 
-//   fn visit_unit(&mut self) -> Result<(), Self::Error> {
-//     unimplemented!();
-//   }
-// 
-//   fn visit_seq<V>(&mut self, _visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//     unimplemented!();
-//   }
-// 
-//   fn visit_map<V>(&mut self, _visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//     unimplemented!();
-//   }
-// }
+struct EnumParser<'a, I: Iterator<Item=u8> + 'a> {
+    de: &'a mut Deserializer<I>,
+    variants: &'static [&'static str],
+}
+
+impl<'a, I: Iterator<Item=u8> + 'a> de::VariantVisitor for EnumParser<'a, I> {
+    type Error = Error;
+    fn visit_variant<V: de::Deserialize>(&mut self) -> Result<V, Self::Error>{
+        writeln!(std::io::stderr(), "EnumParser::visit_variant: peek: {:?}", self.de.iter.peek()).unwrap();
+        match self.de.iter.next() {
+            Some(SexpToken::OpenParen) => (),
+            Some(tok) => return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::OpenParen])),
+            None => return Err(Error::EofError)
+        };
+        
+        let val = try!(de::Deserialize::deserialize(self.de));
+
+
+        Ok(val)
+    }
+
+    fn visit_unit(&mut self) -> Result<(), Self::Error> {
+        writeln!(std::io::stderr(), "EnumParser::visit_unit: peek: {:?}", self.de.iter.peek()).unwrap();
+        let val = try!(de::Deserialize::deserialize(self.de));
+
+        match self.de.iter.next() {
+            Some(SexpToken::CloseParen) => (),
+            Some(tok) => return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::CloseParen])),
+            None => return Err(Error::EofError)
+        };
+        Ok(val)
+    }
+
+    fn visit_tuple<V>(&mut self, _len: usize,_visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        writeln!(std::io::stderr(), "EnumParser::visit_tuple({:?}): peek: {:?}", _len, self.de.iter.peek()).unwrap();
+        // panic!("visit_tuple: {:?}", _len)
+        self.de.parse_list(_visitor)
+    }
+
+    fn visit_struct<V>(&mut self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        writeln!(std::io::stderr(), "EnumParser::visit_struct({:?}): peek: {:?}", _fields, self.de.iter.peek()).unwrap();
+        // panic!("visit_struct: {:?}", _fields)
+        self.de.parse_map(_visitor)
+    }
+}
 
 struct ListParser<'a, I: Iterator<Item=u8> + 'a> {
   de: &'a mut Deserializer<I>
@@ -571,10 +593,6 @@ impl<W> Serializer<W> where W : Write {
     Ok(())
   } 
 
-//   fn visit_named_unit(&mut self, name: &'static str) -> Result<(), Error> {
-//     // writeln!(std::io::stderr(), "Serializer::visit_named_unit:{:?}", name).unwrap();
-//     self.write_str(name.to_string())
-//   }
 // 
   fn visit_bool(&mut self, val: bool) -> Result<(), Error> {
     //writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
@@ -654,14 +672,34 @@ impl<W> Serializer<W> where W : Write {
     try!(key.serialize(self));
     value.serialize(self)
   }
-// 
-//   fn visit_tuple_variant<V>(&mut self, name: &'static str, variant: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
-// //    writeln!(std::io::stderr(), "Serializer::visit_tuple_variant:{}::{}", name, variant).unwrap();
-//     try!(self.open());
-//     try!(self.write_str(format!("{}/{}", name, variant)));
-//     while let Some(()) = try!(visitor.visit(self)) {}
-//     self.close()
-//   }
+
+   fn visit_unit_variant(&mut self, _name: &'static str,
+                          _variant_index: usize,
+                          variant: &'static str) -> Result<(), Error> {
+     // writeln!(std::io::stderr(), "Serializer::visit_named_unit:{:?}", name).unwrap();
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    Ok(try!(self.close()))
+   }
+
+   fn visit_tuple_variant<V: ser::SeqVisitor>(&mut self, name: &'static str,
+                              _variant_index: usize,
+                              variant: &'static str, mut visitor: V)  -> Result<(), Error> {
+     // writeln!(std::io::stderr(), "Serializer::visit_named_unit:{:?}", name).unwrap();
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+   }
+
+   fn visit_struct_variant<V: ser::MapVisitor>(&mut self, _name: &'static str,
+                              _variant_index: usize,
+                              variant: &'static str, mut visitor: V)  -> Result<(), Error> {
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+   }
 }
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {

@@ -230,16 +230,19 @@ fn serde_round_trip_option_point(val: Option<Point>) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 enum SomeEnum {
   Foo,
-  Bar(String),
+  Quux,
+  Bar(u64),
   Baz { some: i32 }
 }
 
 impl quickcheck::Arbitrary for SomeEnum {
   fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> SomeEnum {
-    match u64::arbitrary(g) % 2 {
+    match u64::arbitrary(g) % 4 {
       0 => SomeEnum::Foo,
-      1 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
-      n => panic!("Unexpected value mod 2: {:?}", n)
+      1 => SomeEnum::Quux,
+      2 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
+      3 => SomeEnum::Baz { some: quickcheck::Arbitrary::arbitrary(g) },
+      n => panic!("Unexpected value mod 4: {:?}", n)
     }
   }
 
@@ -247,6 +250,7 @@ impl quickcheck::Arbitrary for SomeEnum {
 //    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
     match *self {
       SomeEnum::Foo => quickcheck::empty_shrinker(),
+      SomeEnum::Quux => quickcheck::single_shrinker(SomeEnum::Foo),
       SomeEnum::Bar(ref x) => {
 	let chained = quickcheck::single_shrinker(SomeEnum::Foo)
 		      .chain(x.shrink().map(SomeEnum::Bar));
@@ -261,9 +265,7 @@ impl quickcheck::Arbitrary for SomeEnum {
   }
 }
 
-// #[quickcheck]
+#[quickcheck]
 fn serde_round_trip_someenum(val: SomeEnum) -> bool {
   round_trip_prop_eq(val, true)
 }
-
-fn should_raise_error_when_wrong_struct_name() {}
