@@ -20,3 +20,8 @@ script:
 - |
     travis-cargo build &&
     travis-cargo test
+
+matrix:
+    allow_failures:
+        - rust: stable
+        - rust: beta
