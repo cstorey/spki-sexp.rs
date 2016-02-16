@@ -290,7 +290,6 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
 
    fn visit_seq<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
      // writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
-     // panic!("Unsupported visitation: {}", "visit_seq")
      match self.iter.next() {
             Some(SexpToken::OpenParen) => self.parse_list(visitor),
             Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen])),
@@ -317,38 +316,11 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
     {
         self.visit_string(visitor)
     }
-// 
-//   fn visit_unit_struct<V>(&mut self, _name: &'static str, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//     writeln!(std::io::stderr(), "Deserializer::visit_named_unit: {}", _name).unwrap();
-//     match self.iter.next() {
-// 	Some(SexpToken::Str(ref s)) if _name == s => visitor.visit_unit_struct(_name)
-//       , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
-//       , None => Err(Error::EofError)
-//     }
-//   }
-//   fn visit_tuple_struct<V>(&mut self, _name: &'static str, len: usize, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
-//     writeln!(std::io::stderr(), "Deserializer::visit_named_seq: {}/{}", _name, len).unwrap();
-//     match self.iter.next() {
-//       Some(SexpToken::OpenParen) => match self.iter.next() {
-// 	  Some(SexpToken::Str(ref s)) if s == _name => self.parse_list(visitor)
-// 	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str(_name.to_string())]))
-// 	, None => Err(Error::EofError)
-// 	}
-//       , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen]))
-//       , None => Err(Error::EofError)
-//     }
-//   }
-// 
+
   fn visit_enum<V>(&mut self, _enum: &'static str, _variants: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::EnumVisitor {
     visitor.visit(self)
   }
-
-//   fn visit_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
-//         where V: de::Visitor {
-//     writeln!(std::io::stderr(), "Deserializer::visit_bytes").unwrap();
-//     panic!("Unsupported visitation: {}", "visit_bytes")
-//   }
 }
 
 impl<'a, I: Iterator<Item=u8> + 'a> de::VariantVisitor for Deserializer<I> where I : Iterator<Item=u8> {
@@ -565,14 +537,7 @@ impl<W> Serializer<W> where W : Write {
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
   }
-//   fn visit_struct<V>(&mut self, name: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::MapVisitor {
-// //    writeln!(std::io::stderr(), "Serializer::visit_struct: {:?}", name).unwrap();
-//     try!(self.open());
-//     try!(self.write_str(name.to_string()));
-//     while let Some(()) = try!(visitor.visit(self)) {}
-//     self.close()
-//   }
-// 
+
   fn visit_map_elt<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where K: ser::Serialize, V:  ser::Serialize {
 //     writeln!(std::io::stderr(), "Serializer::visit_map_elt").unwrap();
