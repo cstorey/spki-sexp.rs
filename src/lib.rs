@@ -1,8 +1,9 @@
+extern crate core;
 extern crate rand;
 extern crate rustc_serialize;
 
 use std::io::{self, Write};
-use std::iter::{Iterator, FromIterator,Peekable, IntoIterator};
+use std::iter::{Iterator, Peekable};
 use std::{error,fmt};
 use std::rc::Rc;
 
@@ -15,28 +16,19 @@ pub enum SexpToken {
   Atom(Vec<u8>)
 }
 
-struct EncodingIterator<I: Iterator> {
-  iter: I
-}
-
-fn encode_token<W>(t: &SexpToken, out: &mut W) -> Result<(), io::Error> where W : Write {
-  match t {
-    &SexpToken::OpenParen => try!(out.write_all(&['(' as u8])),
-      &SexpToken::CloseParen => try!(out.write_all(&[')' as u8])),
-      &SexpToken::Atom(ref s) => {
-	try!(out.write_all(&format!("{}", s.len()).into_bytes()));
-	try!(out.write_all(&[':' as u8]));
-	try!(out.write_all(&s))
-      }
-  }
-
-  Ok(())
-}
-
-pub fn encode<'a, I>(it : I) -> Result<Vec<u8>, io::Error> where I : Iterator<Item=&'a SexpToken> {
+pub fn encode<'a, I>(it : I) -> Vec<u8> where I : Iterator<Item=&'a SexpToken> {
   let mut out = vec![];
   for t in it {
-    try!(encode_token(t, &mut out))
+    match t {
+      &SexpToken::OpenParen => out.push('(' as u8),
+      &SexpToken::CloseParen => out.push(')' as u8),
+      &SexpToken::Str(ref s) => {
+	let bytes = s.clone().into_bytes();
+	out.extend(format!("{}", bytes.len()).into_bytes().as_slice());
+	out.push(':' as u8);
+	out.extend(bytes.as_slice())
+      }
+    }
   }
   Ok(out)
 }
@@ -95,26 +87,29 @@ pub enum SexpInfo {
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum Error {
-  UnexpectedToken(SexpToken),
-  EofError
+  SyntaxError(String),
+  UnexpectedTokenError(SexpToken, Vec<SexpToken>),
+  EofError,
+  IoError(io::Error),
+  InvalidInt(std::num::ParseIntError),
+  InvalidFloat(core::num::ParseFloatError),
+  InvalidBool(std::str::ParseBoolError),
+  UnknownField(String),
+  MissingField(String),
 }
 
-impl SexpInfo {
-  pub fn write_to<W: io::Write>(&self, wr: &mut W) -> Result<(), io::Error> {
-    match self {
-      &SexpInfo::Atom(ref v) => {
-	try!(wr.write_all(&format!("{}", v.len()).into_bytes()));
-	try!(wr.write_all(b":"));
-	try!(wr.write_all(&v));
-	Ok(())
-      },
-      &SexpInfo::List(ref l) => {
-	try!(wr.write_all(b"("));
-	for exp in l.iter() {
-	  try!(exp.write_to(wr))
-	}
-	wr.write_all(b")")
-      }
+impl error::Error for Error {
+  fn description(&self) -> &str {
+    match *self {
+      Error::SyntaxError(_) => "Syntax error",
+      Error::UnexpectedTokenError(_, _) => "Unexpected Token",
+      Error::EofError => "EOF",
+      Error::IoError(ref e) => error::Error::description(e),
+      Error::InvalidInt(ref e) => error::Error::description(e),
+      Error::InvalidFloat(ref e) => error::Error::description(e),
+      Error::InvalidBool(ref e) => error::Error::description(e),
+      Error::UnknownField(_) => "unknown field",
+      Error::MissingField(_) => "missing field"
     }
   }
   pub fn read_from<R: io::Read>(mut rdr: R) -> Result<SexpInfo, Error> {
@@ -155,27 +150,23 @@ impl SexpInfo {
   }
 }
 
-#[derive(Debug)]
-struct Encoder<W> {
-  writer: W
-}
+impl de::Error for Error {
+  fn syntax(msg: &str) -> Error {
+    Error::SyntaxError(msg.to_string())
+  }
 
-impl<W> Encoder<W> where W : Write {
-  fn new(wr: W) -> Encoder<W> {
-    Encoder { writer: wr }
+  fn end_of_stream() -> Error {
+//    writeln!(std::io::stderr(), "Error::end_of_stream_error");
+    Error::EofError
   }
 }
 
-#[derive(Debug)]
-pub enum EncoderError {
-  TokenError(Error),
-  IoError(io::Error)
-}
-pub type EncodeResult<T> = Result<T, EncoderError>;
+  fn unknown_field(field: &str) -> Error {
+    Error::UnknownField(field.to_string())
+  }
 
-impl std::convert::From<Error> for EncoderError{
-  fn from(error: Error) -> EncoderError {
-    EncoderError::TokenError(error)
+  fn missing_field(field: &'static str) -> Error {
+    Error::MissingField(field.to_string())
   }
 }
 
@@ -215,15 +206,8 @@ impl std::convert::From<std::num::ParseFloatError> for DecoderError{
   }
 }
 
-impl std::convert::From<std::str::ParseBoolError> for DecoderError{
-  fn from(error: std::str::ParseBoolError) -> DecoderError {
-    DecoderError::ParseBoolError(error)
-  }
-}
-
-fn emit_with_display<T, W>(v: T, wr: &mut W) -> EncodeResult<()> where T: fmt::Display, W: Write {
-  try!(encode_token(&SexpToken::Atom(format!("{}", v).as_bytes().into_iter().map(|v|v.clone()).collect()), wr));
-  Ok(())
+struct Deserializer<I> where I : Iterator<Item=u8> {
+  iter : Peekable<TokenisingIterator<I>>
 }
 
 impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
@@ -235,175 +219,210 @@ impl <W> rustc_serialize::Encoder for Encoder<W> where W : Write {
     Ok(())
   }
 
-  fn emit_usize(&mut self, v: usize) -> EncodeResult<()> {
-    emit_with_display(v, &mut self.writer)
+   fn parse_list<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+     visitor.visit_seq(ListParser{ de: self })
+   }
+// 
+   fn parse_map<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+     // writeln!(std::io::stderr(), "Deserializer::parse_map(): {:?}", self.iter.peek());
+     visitor.visit_map(MapParser{ de: self })
+   }
+
+
+  fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
+    match self.iter.next() {
+      Some(SexpToken::Str(ref s)) if s == "none" => visitor.visit_none()
+    , Some(SexpToken::OpenParen) => {
+	match self.iter.next() {
+	  Some(SexpToken::Str(ref s)) if s == "some" => {
+	    let result = visitor.visit_some(self);
+	    match self.iter.next() {
+	      Some(SexpToken::CloseParen) => result
+	    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen]))
+	    , None => Err(Error::EofError)
+	    }
+	  }
+	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
+	, None => Err(Error::EofError)
+	}
+    }
+    , None => Err(Error::EofError)
+    , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::CloseParen, SexpToken::Str("?".to_string())]))
+    }
   }
-  fn emit_u64(&mut self, v: u64) -> EncodeResult<()> {
-    emit_with_display(v, &mut self.writer)
-  }
-  fn emit_u32(&mut self, v: u32) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_u16(&mut self, v: u16) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_u8(&mut self, v: u8) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
 
-  fn emit_isize(&mut self, v: isize) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_i64(&mut self, v: i64) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_i32(&mut self, v: i32) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_i16(&mut self, v: i16) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_i8(&mut self, v: i8) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
+impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=u8> {
+   type Error = Error;
+   fn visit<V>(&mut self, _visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
+       Err(serde::de::Error::syntax("spki-sexp does not support Deserializer::visit"))
+   }
 
-  fn emit_bool(&mut self, v: bool) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-
-  fn emit_f64(&mut self, v: f64) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-  fn emit_f32(&mut self, v: f32) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-
-  fn emit_char(&mut self, v: char) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-
-  fn emit_str(&mut self, v: &str) -> EncodeResult<()> { emit_with_display(v, &mut self.writer) }
-
-  fn emit_enum<F>(&mut self, name: &str, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-//    writeln!(std::io::stderr(),"emit_enum {:?}" , name).unwrap();
-    f(self)
-  }
-
-  fn emit_enum_variant<F>(&mut self,
-      name: &str,
-      _id: usize,
-      cnt: usize,
-      f: F)
-    -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
+    fn visit_unit<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> 
+        where V: de::Visitor,
     {
-//      writeln!(std::io::stderr(),"emit_enum_variant name:{:?}; id:{:?}; count:{:?}" , name, _id, cnt).unwrap();
-      try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
-      try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
-      try!(f(self));
-      try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
-      Ok(())
+        visitor.visit_unit()
     }
 
-  fn emit_enum_variant_arg<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-//    writeln!(std::io::stderr(),"emit_enum_variant_arg idx:{:?}", idx).unwrap();
-    f(self)
+    fn visit_string<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(SexpToken::Str(ref s)) => visitor.visit_str(s),
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("<String>".to_string())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+    fn visit_u64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(SexpToken::Str(ref s)) => match s.parse() { 
+                Ok(n) => visitor.visit_u64(n),
+                Err(e) => Err(Error::InvalidInt(e)),
+            },
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("<u64>".to_string())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+    fn visit_i64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(SexpToken::Str(ref s)) => match s.parse() { 
+                Ok(n) => visitor.visit_i64(n),
+                Err(e) => Err(Error::InvalidInt(e)),
+            },
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("<i64>".to_string())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+    fn visit_f64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(SexpToken::Str(ref s)) => match s.parse() { 
+                Ok(n) => visitor.visit_f64(n),
+                Err(e) => Err(Error::InvalidFloat(e)),
+            },
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("<f64>".to_string())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+    fn visit_bool<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(SexpToken::Str(ref s)) => match s.parse() { 
+                Ok(n) => visitor.visit_bool(n),
+                Err(e) => Err(Error::InvalidBool(e)),
+            },
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("<bool>".to_string())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+
+// 
+   fn visit_option<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+     self.parse_option(visitor)
+   }
+
+   fn visit_seq<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+     // writeln!(std::io::stderr(), "Deserializer::visit_seq").unwrap();
+     // panic!("Unsupported visitation: {}", "visit_seq")
+     match self.iter.next() {
+            Some(SexpToken::OpenParen) => self.parse_list(visitor),
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen])),
+            None => Err(Error::EofError),
+        }
+   }
+   fn visit_map<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+//     writeln!(std::io::stderr(), "Deserializer::visit_map").unwrap();
+     match self.iter.next() {
+            Some(SexpToken::OpenParen) => self.parse_map(visitor),
+            Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen])),
+            None => Err(Error::EofError),
+        }
+
+     
+   }
+   fn visit_struct<V>(&mut self, _name: &'static str, _fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error>
+         where V: de::Visitor {
+     self.visit_map(visitor)
+   }
+
+    fn visit_struct_field<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error>
+        where V: de::Visitor,
+    {
+        self.visit_string(visitor)
+    }
+// 
+//   fn visit_unit_struct<V>(&mut self, _name: &'static str, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+//     writeln!(std::io::stderr(), "Deserializer::visit_named_unit: {}", _name).unwrap();
+//     match self.iter.next() {
+// 	Some(SexpToken::Str(ref s)) if _name == s => visitor.visit_unit_struct(_name)
+//       , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str("?".to_string())]))
+//       , None => Err(Error::EofError)
+//     }
+//   }
+//   fn visit_tuple_struct<V>(&mut self, _name: &'static str, len: usize, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+//     writeln!(std::io::stderr(), "Deserializer::visit_named_seq: {}/{}", _name, len).unwrap();
+//     match self.iter.next() {
+//       Some(SexpToken::OpenParen) => match self.iter.next() {
+// 	  Some(SexpToken::Str(ref s)) if s == _name => self.parse_list(visitor)
+// 	, Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::Str(_name.to_string())]))
+// 	, None => Err(Error::EofError)
+// 	}
+//       , Some(tok) => Err(Error::UnexpectedTokenError(tok, vec![SexpToken::OpenParen]))
+//       , None => Err(Error::EofError)
+//     }
+//   }
+// 
+  fn visit_enum<V>(&mut self, _enum: &'static str, _variants: &'static [&'static str], mut visitor: V) -> Result<V::Value, Self::Error>
+        where V: de::EnumVisitor {
+    visitor.visit(self)
   }
 
-  fn emit_enum_struct_variant<F>(&mut self,
-      name: &str,
-      id: usize,
-      cnt: usize,
-      f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    panic!("emit_enum_struct_variant; does not seem to be needed")
-  }
+//   fn visit_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
+//         where V: de::Visitor {
+//     writeln!(std::io::stderr(), "Deserializer::visit_bytes").unwrap();
+//     panic!("Unsupported visitation: {}", "visit_bytes")
+//   }
+}
 
-  fn emit_enum_struct_variant_field<F>(&mut self,
-      _: &str,
-      idx: usize,
-      f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    panic!("emit_enum_struct_variant_field; does not seem to be needed")
-  }
+impl<'a, I: Iterator<Item=u8> + 'a> de::VariantVisitor for Deserializer<I> where I : Iterator<Item=u8> {
+    type Error = Error;
+    fn visit_variant<V: de::Deserialize>(&mut self) -> Result<V, Self::Error>{
+        // writeln!(std::io::stderr(), "EnumParser::visit_variant: peek: {:?}", self.iter.peek()).unwrap();
+        match self.iter.next() {
+            Some(SexpToken::OpenParen) => (),
+            Some(tok) => return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::OpenParen])),
+            None => return Err(Error::EofError)
+        };
+        
+        let val = try!(de::Deserialize::deserialize(self));
 
 
-  fn emit_struct<F>(&mut self, name: &str, len: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
-    try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
-    try!(f(self));
-    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
-    Ok(())
-  }
+        Ok(val)
+    }
 
-  fn emit_struct_field<F>(&mut self, name: &str, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    try!(encode_token(&SexpToken::Atom(name.bytes().map(|c|c.clone()).collect()), &mut self.writer));
-    f(self)
-  }
+    fn visit_unit(&mut self) -> Result<(), Self::Error> {
+        // writeln!(std::io::stderr(), "EnumParser::visit_unit: peek: {:?}", self.iter.peek()).unwrap();
+        let val = try!(de::Deserialize::deserialize(self));
 
-  fn emit_tuple<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    self.emit_seq(len, f)
-  }
-  fn emit_tuple_arg<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    self.emit_seq_elt(idx, f)
-  }
+        match self.iter.next() {
+            Some(SexpToken::CloseParen) => (),
+            Some(tok) => return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::CloseParen])),
+            None => return Err(Error::EofError)
+        };
+        Ok(val)
+    }
 
-  fn emit_tuple_struct<F>(&mut self, _: &str, len: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    self.emit_seq(len, f)
-  }
-  fn emit_tuple_struct_arg<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    self.emit_seq_elt(idx, f)
-  }
+    fn visit_tuple<V>(&mut self, _len: usize,_visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        // writeln!(std::io::stderr(), "EnumParser::visit_tuple({:?}): peek: {:?}", _len, self.iter.peek()).unwrap();
+        // panic!("visit_tuple: {:?}", _len)
+        self.parse_list(_visitor)
+    }
 
-  fn emit_option<F>(&mut self, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    f(self)
-  }
-
-  fn emit_option_none(&mut self) -> EncodeResult<()> {
-    self.emit_nil()
-  }
-
-  fn emit_option_some<F>(&mut self, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
-    try!(encode_token(&SexpToken::Atom(b"some".iter().map(|c|c.clone()).collect()), &mut self.writer));
-    try!(f(self));
-    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
-    Ok(())
-  }
-
-  fn emit_seq<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
-    try!(f(self));
-    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
-    Ok(())
-  }
-
-  fn emit_seq_elt<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    f(self)
-  }
-
-  fn emit_map<F>(&mut self, len: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    try!(encode_token(&SexpToken::OpenParen, &mut self.writer));
-    try!(f(self));
-    try!(encode_token(&SexpToken::CloseParen, &mut self.writer));
-    Ok(())
-  }
-
-  fn emit_map_elt_key<F>(&mut self, idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    f(self)
-  }
-
-  fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> EncodeResult<()> where
-    F: FnOnce(&mut Self) -> EncodeResult<()>,
-  {
-    f(self)
-  }
+    fn visit_struct<V>(&mut self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        // writeln!(std::io::stderr(), "EnumParser::visit_struct({:?}): peek: {:?}", _fields, self.iter.peek()).unwrap();
+        // panic!("visit_struct: {:?}", _fields)
+        self.parse_map(_visitor)
+    }
 }
 
 #[derive(Debug)]
@@ -413,13 +432,15 @@ impl Decoder {
     Decoder(sexp)
   }
 }
-
-macro_rules! parse_atom {
-  ($name:ident, $ty:ident) => {
-    fn $name(&mut self) -> DecodeResult<$ty> {
-      match &self.0 {
-	&SexpInfo::Atom(ref s) => Ok(try!(String::from_utf8_lossy(s).parse::<$ty>())),
-	  other => Err(DecoderError::SyntaxError("parse_atom", other.clone()))
+// 
+impl<'a, I: Iterator<Item=u8> + 'a> de::SeqVisitor for ListParser<'a, I> {
+  type Error = Error;
+  fn visit<T>(&mut self) -> Result<Option<T>, Error> where T : de::Deserialize {
+//    writeln!(std::io::stderr(), "ListParser::visit: peek: {:?}", self.de.iter.peek()).unwrap();
+    match self.de.iter.peek() {
+      Some(&SexpToken::CloseParen) => {
+//	writeln!(std::io::stderr(), "ListParser::ending: peek: {:?}", self.de.iter.peek()).unwrap();
+	Ok(None)
       }
     }
   }
@@ -428,42 +449,22 @@ macro_rules! parse_atom {
 impl rustc_serialize::Decoder for Decoder {
     type Error = DecoderError;
 
-    fn read_nil(&mut self) -> DecodeResult<()> {
-      // writeln!(std::io::stderr(),"read_nil");
-      match &self.0 {
-	&SexpInfo::Atom(ref s) if s == b"nil" => Ok(()),
-	other => Err(DecoderError::SyntaxError("read_nil", other.clone()))
+impl<'a, I: Iterator<Item=u8> + 'a> de::MapVisitor for MapParser<'a, I> {
+  type Error = Error;
+  fn visit_key<K>(&mut self) -> Result<Option<K>, Error> where K : de::Deserialize {
+    // writeln!(std::io::stderr(), "MapParser::visit_key: peek: {:?}", self.de.iter.peek()).unwrap();
+    match self.de.iter.peek() {
+      Some(&SexpToken::CloseParen) => {
+	let _ = self.de.iter.next().unwrap();
+	// writeln!(std::io::stderr(), "MapParser::visit_key: closed: {:?}", self.de.iter.peek()).unwrap();
+	Ok(None)
       }
-    }
-
-    parse_atom!(read_u64, u64);
-    parse_atom!(read_usize, usize);
-    parse_atom!(read_u32, u32);
-    parse_atom!(read_u16, u16);
-    parse_atom!(read_u8, u8);
-
-    parse_atom!(read_isize, isize);
-    parse_atom!(read_i64, i64);
-    parse_atom!(read_i32, i32);
-    parse_atom!(read_i16, i16);
-    parse_atom!(read_i8, i8);
-
-    parse_atom!(read_f32, f32);
-    parse_atom!(read_f64, f64);
-    parse_atom!(read_bool, bool);
-
-    fn read_char(&mut self) -> DecodeResult<char> {
-      match &self.0 {
-	&SexpInfo::Atom(ref bytes) => {
-	  let s = String::from_utf8_lossy(bytes);
-
-	  if s.chars().count() == 1 {
-	     Ok(s.chars().next().unwrap())
-	  } else {
-	    Err(DecoderError::SyntaxError("read_char", self.0.clone()))
-	  }
-	},
-	other => Err(DecoderError::SyntaxError("read_char", other.clone()))
+      None => Err(Error::EofError),
+      _ => {
+//	let _ = self.de.iter.next().unwrap();
+	// writeln!(std::io::stderr(), "MapParser::visit_key: read key @{:?}", self.de.iter.peek());
+	let val = try!(de::Deserialize::deserialize(self.de));
+	Ok(Some(val))
       }
     }
 
@@ -552,23 +553,14 @@ impl rustc_serialize::Decoder for Decoder {
       }
     }
 
-    fn read_struct_field<T, F>(&mut self,
-                               name: &str,
-                               _idx: usize,
-                               f: F)
-                               -> DecodeResult<T> where
-        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
-    {
-      // writeln!(std::io::stderr(),"read_struct_field: {:?}, {:?}; {:?}" , name, _idx, &self.0).unwrap();
-      match &self.0.clone() {
-	&SexpInfo::List(ref l) => {
-	  let off = _idx*2+1;
-	  if l[off] == SexpInfo::Atom(name.bytes().map(|c|c.clone()).collect()) {
-	    f(&mut Decoder(l[off+1].clone()))
-	  } else {
-	    Err(DecoderError::SyntaxError("read_struct_field; wrong name", self.0.clone()))
-	  }
-	},
+  fn end(&mut self) -> Result<(), Error> {
+    Ok(())
+  }
+}
+
+struct Serializer<W> {
+  writer : W
+}
 
 	other => Err(DecoderError::SyntaxError("read_struct_field", other.clone()))
       }
@@ -586,50 +578,121 @@ impl rustc_serialize::Decoder for Decoder {
       self.read_seq_elt(idx, f)
     }
 
-    fn read_tuple_struct<T, F>(&mut self,
-                               _name: &str,
-                               len: usize,
-                               f: F)
-                               -> DecodeResult<T> where
-        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
-    {
-      panic!("read_tuple_struct; does not seem to be needed")
-    }
+ impl<W> ser::Serializer for Serializer<W> where W: Write {
+   type Error = Error;
+// 
+  fn visit_unit(&mut self) -> Result<(), Error> {
+    Ok(())
+  } 
 
-    fn read_tuple_struct_arg<T, F>(&mut self,
-                                   idx: usize,
-                                   f: F)
-                                   -> DecodeResult<T> where
-        F: FnOnce(&mut Decoder) -> DecodeResult<T>,
-    {
-      panic!("read_tuple_struct_arg; does not seem to be needed")
+// 
+  fn visit_bool(&mut self, val: bool) -> Result<(), Error> {
+    //writeln!(std::io::stderr(), "Serializer::visit_bool: {:?}", val).unwrap();
+    if val {
+      try!(self.write_str("true".to_string()))
+    } else {
+      try!(self.write_str("false".to_string()))
     }
+    Ok(())
+  }
+//   // TODO: Consider using display-hints for types of atoms.
+  fn visit_u64(&mut self, v: u64) -> Result<(), Error> {
+//     writeln!(std::io::stderr(), "Serializer::visit_u64: {:?}", v).unwrap();
+    Ok(try!(self.write_str(v.to_string())))
+  }
+  fn visit_i64(&mut self, v: i64) -> Result<(), Error> {
+//    writeln!(std::io::stderr(), "Serializer::visit_i64: {:?}", v).unwrap();
+    try!(self.write_str(v.to_string()));
+    Ok(())
+  }
+  fn visit_f64(&mut self, v: f64) -> Result<(), Error> {
+//    writeln!(std::io::stderr(), "Serializer::visit_f64: {:?}", v).unwrap();
+    try!(self.write_str(v.to_string()));
+    Ok(())
+  }
+  fn visit_str(&mut self, v: &str) -> Result<(), Error> {
+//     writeln!(std::io::stderr(), "Serializer::visit_str: {:?}", v).unwrap();
+    self.write_str(format!("{}", v))
+  }
+  fn visit_none(&mut self) -> Result<(), Error> {
+//    writeln!(std::io::stderr(), "Serializer::visit_none").unwrap();
+    self.write_str("none".to_string())
+  }
+  fn visit_some<T>(&mut self, v: T) -> Result<(), Error> where T: ser::Serialize {
+ //    writeln!(std::io::stderr(), "Serializer::visit_some(?)").unwrap();
+    try!(self.open());
+    try!(self.write_str("some".to_string()));
+    try!(v.serialize(self));
+    self.close()
+  }
+  fn visit_seq<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
+    // writeln!(std::io::stderr(), "Serializer::visit_seq").unwrap();
+    try!(self.open());
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+  }
+// 
+//   fn visit_named_seq<V>(&mut self, name: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
+//     // writeln!(std::io::stderr(), "Serializer::visit_named_seq:{}", name).unwrap();
+//     try!(self.open());
+//     try!(self.write_str(name.to_string()));
+//     while let Some(()) = try!(visitor.visit(self)) {}
+//     self.close()
+//   }
+// 
+  fn visit_seq_elt<T>(&mut self, v: T) -> Result<(), Error> where T: ser::Serialize {
+//     writeln!(std::io::stderr(), "Serializer::visit_seq_elt").unwrap();
+    v.serialize(self)
+  }
+  fn visit_map<V>(&mut self, mut visitor: V) -> Result<(), Error> where V: ser::MapVisitor {
+//    writeln!(std::io::stderr(), "Serializer::visit_map").unwrap();
+    try!(self.open());
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+  }
+//   fn visit_struct<V>(&mut self, name: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::MapVisitor {
+// //    writeln!(std::io::stderr(), "Serializer::visit_struct: {:?}", name).unwrap();
+//     try!(self.open());
+//     try!(self.write_str(name.to_string()));
+//     while let Some(()) = try!(visitor.visit(self)) {}
+//     self.close()
+//   }
+// 
+  fn visit_map_elt<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    where K: ser::Serialize, V:  ser::Serialize {
+//     writeln!(std::io::stderr(), "Serializer::visit_map_elt").unwrap();
+    try!(key.serialize(self));
+    value.serialize(self)
+  }
 
-    fn read_option<T, F>(&mut self, mut f: F) -> DecodeResult<T> where
-        F: FnMut(&mut Decoder, bool) -> DecodeResult<T>,
-    {
-      match &self.0.clone() {
-	&SexpInfo::Atom(ref atom) if atom == b"nil" => {
-	  f(self, false)
-	},
-	&SexpInfo::List(ref l) if l.len() == 2 && l[0] == SexpInfo::Atom(b"some".iter().map(|c|c.clone()).collect()) => {
-	  f(&mut Decoder(l[1].clone()), true)
-	},
+   fn visit_unit_variant(&mut self, _name: &'static str,
+                          _variant_index: usize,
+                          variant: &'static str) -> Result<(), Error> {
+     // writeln!(std::io::stderr(), "Serializer::visit_named_unit:{:?}", name).unwrap();
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    Ok(try!(self.close()))
+   }
 
-	other => Err(DecoderError::SyntaxError("read_option", other.clone()))
-      }
-    }
+   fn visit_tuple_variant<V: ser::SeqVisitor>(&mut self, _name: &'static str,
+                              _variant_index: usize,
+                              variant: &'static str, mut visitor: V)  -> Result<(), Error> {
+     // writeln!(std::io::stderr(), "Serializer::visit_named_unit:{:?}", name).unwrap();
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+   }
 
-    fn read_seq<T, F>(&mut self, f: F) -> DecodeResult<T> where
-        F: FnOnce(&mut Decoder, usize) -> DecodeResult<T>,
-    {
-      match &self.0.clone() {
-	&SexpInfo::List(ref l) => {
-	  f(self, l.len())
-	},
-	other => Err(DecoderError::SyntaxError("read_seq", other.clone()))
-      }
-    }
+   fn visit_struct_variant<V: ser::MapVisitor>(&mut self, _name: &'static str,
+                              _variant_index: usize,
+                              variant: &'static str, mut visitor: V)  -> Result<(), Error> {
+    try!(self.open());
+    try!(self.write_str(variant.to_string()));
+    while let Some(()) = try!(visitor.visit(self)) {}
+    self.close()
+   }
+}
 
     fn read_seq_elt<T, F>(&mut self, _idx: usize, f: F) -> DecodeResult<T> where
         F: FnOnce(&mut Decoder) -> DecodeResult<T>,

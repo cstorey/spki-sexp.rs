@@ -1,3 +1,8 @@
+#![feature(plugin, custom_attribute, custom_derive)]
+#![plugin(quickcheck_macros)]
+#![plugin(serde_macros)]
+
+extern crate serde;
 extern crate spki_sexp;
 extern crate quickcheck;
 extern crate rustc_serialize;
@@ -5,19 +10,11 @@ extern crate num;
 #[cfg(nightly)]
 extern crate test;
 
-use quickcheck::{Arbitrary, Gen, quickcheck};
-use std::{error,fmt};
-use std::io::{self, Write};
-use std::iter::{Iterator, FromIterator,Peekable};
-use std::sync::Arc;
-use std::rc::{self, Rc};
-use std::result::Result;
-use std::collections::HashMap;
-use std::iter;
-
-use rustc_serialize::{Decodable, Encodable};
-#[cfg(nightly)]
-use test::Bencher;
+use quickcheck::{Arbitrary};
+use serde::{ser,de};
+use std::fmt;
+use std::io::Write;
+use std::iter::{Iterator, FromIterator};
 
 use spki_sexp::*;
 use spki_sexp::SexpInfo::*;
@@ -67,7 +64,7 @@ fn round_trip_tokens(toks : Vec<Tok>) -> bool {
 //   writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
   let encd = encode((&toks).iter()).unwrap();
 //   writeln!(std::io::stderr(),"{:?}", vec8_as_str(&encd)).unwrap();
-  let mut res = Vec::from_iter(tokenise(encd.iter().map(|p|p.clone())));
+  let res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
 //   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, vec8_as_str(&encd), res, res == toks).unwrap();
   res == toks
 }
@@ -108,16 +105,9 @@ impl fmt::Display for ASexp {
 }
 thread_local!(static DEPTH: std::cell::RefCell<usize> = std::cell::RefCell::new(0));
 
-struct DepthGuard;
-
-impl DepthGuard {
-    fn new() -> DepthGuard {
-        DEPTH.with(|d| { *d.borrow_mut() += 1 });
-        DepthGuard
-    }
-    fn depth(&self) -> usize {
-        DEPTH.with(|d| *d.borrow())
-    }
+#[quickcheck]
+fn serde_round_trip_u64(val: u64) -> bool {
+  round_trip_prop_eq(val, false)
 }
 
 impl Drop for DepthGuard {
@@ -159,31 +149,39 @@ impl<'a> quickcheck::Arbitrary for ASexp {
   }
 }
 
-
-//#[quickcheck]
-fn round_trip_sexp_tree(val : ASexp) -> bool {
-  let v = val.desexp();
-  // writeln!(std::io::stderr(),"wheee: {:?}", val).unwrap();
-  let mut buf = vec![];
-  v.write_to(&mut buf).unwrap();
-  // writeln!(std::io::stderr(),"wheee: {:?}", vec8_as_str(&buf)).unwrap();
-  let decd = SexpInfo::read_from(&mut io::Cursor::new(buf.clone())).unwrap();
-  // writeln!(std::io::stderr(),"result: {:?} -> {:?} -> {:?}; {:?}", v, vec8_as_str(&buf), decd, v == decd).unwrap();
-  decd == v
+#[quickcheck]
+fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
+  round_trip_prop_eq(val, false)
 }
 
-fn round_trip_prop<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, verbose: bool, equalish: fn(&T, &T) -> bool) -> bool{
-  let encd = spki_sexp::to_bytes(&val).unwrap();
-  if verbose { writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap(); };
-  let dec = spki_sexp::from_bytes::<T>(&encd);
-  if verbose { writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap(); };
-  if let Ok(decoded) = dec {
-    if verbose { writeln!(std::io::stderr(),"-> {:?}", equalish(&decoded, &val)).unwrap(); };
-    equalish(&decoded, &val)
-  } else {
-    if verbose { writeln!(std::io::stderr(),"-> {:?}", dec).unwrap(); };
-    false
-  }
+#[quickcheck]
+fn serde_round_trip_vec_u64(val: Vec<u64>) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_u64(val: (u64,)) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_u64_u64(val: (u64,u64)) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_u64_u64_u64(val: (u64,u64,u64)) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> bool {
+  round_trip_prop_eq(val, false)
 }
 
 fn round_trip_prop_eq<T : fmt::Debug + Encodable + Decodable + PartialEq>(val: T, verbose: bool) -> bool{
@@ -195,13 +193,11 @@ trait Epsilon { fn eps() -> Self; }
 impl Epsilon for f64 { fn eps() -> f64 { 0.00001f64 } }
 impl Epsilon for f32 { fn eps() -> f32 { 0.0001f32 } }
 
-fn close_enough<T>(x: &T, y: &T) -> bool where T: num::Float + Epsilon {
-  let max = x.abs().max(y.abs());
-  if max == T::zero() {
-    true
-  } else {
-    let delta = x.abs_sub(*y) / max;
-    delta <= T::eps()
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct MyUnityType;
+impl quickcheck::Arbitrary for MyUnityType {
+  fn arbitrary<G: quickcheck::Gen>(_ : &mut G) -> MyUnityType {
+    MyUnityType
   }
 }
 
@@ -240,17 +236,20 @@ qc_round_trip!(round_trip_tuple_u64_u64, (u64, u64));
 qc_round_trip!(round_trip_vec_u64, Vec<u64>);
 qc_round_trip!(round_trip_option_u64, Option<u64>);
 
-#[test] fn parse_bad_none() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"5:nodnol").is_err()) }
-#[test] fn parse_bad_some_insufficient_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some)").is_err()) }
-#[test] fn parse_bad_some_too_many_items() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some1:14:spam)").is_err()) }
-#[test] fn parse_bad_some_bad_label() { assert!(spki_sexp::from_bytes::<Option<u64>>(b"(3:lol1:2)").is_err()) }
-#[test] fn parse_bad_some_ok() { assert_eq!(spki_sexp::from_bytes::<Option<u64>>(b"(4:some2:99)").unwrap(), Some(99)) }
+#[quickcheck]
+fn serde_round_trip_named_struct(val: Point) -> bool {
+  round_trip_prop_eq(val, false)
+}
 
-qc_round_trip!(round_trip_map_u64_u64, HashMap<u64,u64>);
+#[quickcheck]
+fn serde_round_trip_onetuple_named_struct(val: (Point,)) -> bool {
+  round_trip_prop_eq(val, false)
+}
 
-#[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
-struct TupleStruct(i32, i32, String);
-qc_round_trip!(round_trip_tpl_struct, (i32,i32, String), (a,b,c) => TupleStruct(a,b,c));
+#[quickcheck]
+fn serde_round_trip_option_point(val: Option<Point>) -> bool {
+  round_trip_prop_eq(val, false)
+}
 
 #[derive(PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 struct NameStruct { x: String, y: String }
@@ -259,17 +258,19 @@ qc_round_trip!(round_trip_name_struct, (String, String), (a,b) => NameStruct{ x:
 #[derive(Clone,PartialEq,Eq,Debug,RustcEncodable,RustcDecodable)]
 enum SomeEnum {
   Foo,
-  Bar(String),
+  Quux,
+  Bar(u64),
   Baz { some: i32 }
 }
 
 impl quickcheck::Arbitrary for SomeEnum {
   fn arbitrary<G: quickcheck::Gen>(g : &mut G) -> SomeEnum {
-    match u64::arbitrary(g) % 3 {
+    match u64::arbitrary(g) % 4 {
       0 => SomeEnum::Foo,
-      1 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
-      2 => SomeEnum::Baz { some: quickcheck::Arbitrary::arbitrary(g) },
-      n => panic!("Unexpected value mod 2: {:?}", n)
+      1 => SomeEnum::Quux,
+      2 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
+      3 => SomeEnum::Baz { some: quickcheck::Arbitrary::arbitrary(g) },
+      n => panic!("Unexpected value mod 4: {:?}", n)
     }
   }
 
@@ -277,6 +278,7 @@ impl quickcheck::Arbitrary for SomeEnum {
 //    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
     match *self {
       SomeEnum::Foo => quickcheck::empty_shrinker(),
+      SomeEnum::Quux => quickcheck::single_shrinker(SomeEnum::Foo),
       SomeEnum::Bar(ref x) => {
         let chained = quickcheck::single_shrinker(SomeEnum::Foo)
                       .chain(x.shrink().map(SomeEnum::Bar));
@@ -291,67 +293,7 @@ impl quickcheck::Arbitrary for SomeEnum {
   }
 }
 
-qc_round_trip!(round_trip_some_enum, SomeEnum);
-//#[quickcheck] fn round_trip_some_enum(val: SomeEnum) -> bool { round_trip_prop_eq(val, false) }
-
-#[cfg(nightly)]
-mod benches {
-
-fn bench_emit(b: &mut Bencher, v: SexpInfo) {
-  let mut buf = vec![];
-  v.write_to(&mut buf).unwrap();
-
-  b.bytes = buf.len() as u64;
-// writeln!(std::io::stderr(),"size: {:?}", buf.len()).unwrap();
-  b.iter(|| v.write_to(&mut buf).unwrap() )
-}
-
-fn bench_read(b: &mut Bencher, v: SexpInfo) {
-  let mut buf = vec![];
-  v.write_to(&mut buf).unwrap();
-
-  b.bytes = buf.len() as u64;
-  writeln!(std::io::stderr(),"size: {:?}", buf.len()).unwrap();
-  b.iter(|| SexpInfo::read_from(&mut io::Cursor::new(buf.clone())).unwrap() )
-}
-#[bench]
-fn bench_emit_atom(b: &mut Bencher) {
-  bench_emit(b, Atom("hello world!".into()));
-}
-
-#[bench]
-fn bench_read_atom(b: &mut Bencher) {
-  bench_read(b, Atom("Hello world!".into()))
-}
-
-#[bench]
-fn bench_emit_list(b: &mut Bencher) {
-  let a = Atom("hello world!".into());
-  let l = List(Rc::new(iter::repeat(a).take(64).collect()));
-  bench_emit(b, l);
-}
-
-#[bench]
-fn bench_read_list(b: &mut Bencher) {
-  let a = Atom("hello world!".into());
-  let l = List(Rc::new(iter::repeat(a).take(64).collect()));
-  bench_read(b, l)
-}
-#[bench]
-fn bench_emit_nested(b: &mut Bencher) {
-  let a = Atom("hello world!".into());
-  let l = List(Rc::new(iter::repeat(a).take(8).collect()));
-  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
-  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
-  bench_emit(b, l);
-}
-
-#[bench]
-fn bench_read_nested(b: &mut Bencher) {
-  let a = Atom("hello world!".into());
-  let l = List(Rc::new(iter::repeat(a).take(8).collect()));
-  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
-  let l = List(Rc::new(iter::repeat(l).take(8).collect()));
-  bench_read(b, l)
-}
+#[quickcheck]
+fn serde_round_trip_someenum(val: SomeEnum) -> bool {
+  round_trip_prop_eq(val, false)
 }
