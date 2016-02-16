@@ -21,6 +21,11 @@ script:
     travis-cargo build &&
     travis-cargo test
 
+env:
+  global:
+    # override the default `--features unstable` used for the nightly branch (optional)
+    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
+
 matrix:
     allow_failures:
         - rust: stable
