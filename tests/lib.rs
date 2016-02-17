@@ -68,46 +68,46 @@ fn round_trip_tokens(toks : Vec<Tok>) -> Result<bool, spki_sexp::Error> {
   Ok(res == toks)
 }
 
-fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool, equalish: fn(&T, &T) -> bool) -> bool{
-  let encd = as_bytes(&val);
+fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool, equalish: fn(&T, &T) -> bool) -> Result<bool, Error> {
+  let encd = try!(as_bytes(&val));
   if verbose { writeln!(std::io::stderr(),"round_trip: {:?} -> {:?}", val, vec8_as_str(&encd)).unwrap(); };
-  let dec = from_bytes::<T>(encd.as_slice());
+  let dec = try!(from_bytes::<T>(encd.as_slice()));
   if verbose { writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?}", val, vec8_as_str(&encd), dec).unwrap(); };
-  equalish(&dec.unwrap(), &val)
+  Ok(equalish(&dec, &val))
 }
 
-fn round_trip_prop_eq<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool) -> bool{
+fn round_trip_prop_eq<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool) -> Result<bool, Error> {
   round_trip_prop(val, verbose, std::cmp::PartialEq::eq)
 }
 
 
 #[quickcheck]
-fn serde_round_trip_unit(val: ()) -> bool {
+fn serde_round_trip_unit(val: ()) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_string(val: String) -> bool {
+fn serde_round_trip_string(val: String) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_u64(val: u64) -> bool {
+fn serde_round_trip_u64(val: u64) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_bool(val: bool) -> bool {
+fn serde_round_trip_bool(val: bool) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_u8(val: u8) -> bool {
+fn serde_round_trip_u8(val: u8) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_isize(val: isize) -> bool {
+fn serde_round_trip_isize(val: isize) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
@@ -127,52 +127,52 @@ fn close_enough(x: &f64, y: &f64) -> bool {
 }
 // TODO: Also check for NaN / Infinites
 #[quickcheck]
-fn serde_round_trip_f64(val: f64) -> bool {
+fn serde_round_trip_f64(val: f64) -> Result<bool, Error> {
   round_trip_prop(val, false, close_enough)
 }
 
 #[quickcheck]
-fn serde_round_trip_vec_string(val: Vec<String>) -> bool {
+fn serde_round_trip_vec_string(val: Vec<String>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_vec_u64(val: Vec<u64>) -> bool {
+fn serde_round_trip_vec_u64(val: Vec<u64>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_tuple_u64(val: (u64,)) -> bool {
+fn serde_round_trip_tuple_u64(val: (u64,)) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_tuple_u64_u64(val: (u64,u64)) -> bool {
+fn serde_round_trip_tuple_u64_u64(val: (u64,u64)) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_tuple_u64_u64_u64(val: (u64,u64,u64)) -> bool {
+fn serde_round_trip_tuple_u64_u64_u64(val: (u64,u64,u64)) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> bool {
+fn serde_round_trip_tuple_string_u64(val: (String,u64)) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> bool {
+fn serde_round_trip_map_u64_u64(val: std::collections::HashMap<u64,u64>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_option_u64(val: Option<u64>) -> bool {
+fn serde_round_trip_option_u64(val: Option<u64>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_option_string(val: Option<String>) -> bool {
+fn serde_round_trip_option_string(val: Option<String>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
@@ -185,7 +185,7 @@ impl quickcheck::Arbitrary for MyUnityType {
 }
 
 #[quickcheck]
-fn serde_round_trip_unity_struct(val: MyUnityType) -> bool {
+fn serde_round_trip_unity_struct(val: MyUnityType) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
@@ -199,7 +199,7 @@ impl quickcheck::Arbitrary for StructTuple {
 }
 
 #[quickcheck]
-fn serde_round_trip_struct_tuple(val: StructTuple) -> bool {
+fn serde_round_trip_struct_tuple(val: StructTuple) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
@@ -216,17 +216,17 @@ impl quickcheck::Arbitrary for Point {
 }
 
 #[quickcheck]
-fn serde_round_trip_named_struct(val: Point) -> bool {
+fn serde_round_trip_named_struct(val: Point) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_onetuple_named_struct(val: (Point,)) -> bool {
+fn serde_round_trip_onetuple_named_struct(val: (Point,)) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
 #[quickcheck]
-fn serde_round_trip_option_point(val: Option<Point>) -> bool {
+fn serde_round_trip_option_point(val: Option<Point>) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }
 
@@ -269,6 +269,6 @@ impl quickcheck::Arbitrary for SomeEnum {
 }
 
 #[quickcheck]
-fn serde_round_trip_someenum(val: SomeEnum) -> bool {
+fn serde_round_trip_someenum(val: SomeEnum) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
 }

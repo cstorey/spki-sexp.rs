@@ -134,11 +134,14 @@ pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T, Error> where T : de::Des
     Ok(value)
 }
 
-pub fn as_bytes<T>(value: &T) -> Vec<u8> where T : ser::Serialize {
+pub fn as_bytes<T>(value: &T) -> Result<Vec<u8>, Error> where T : ser::Serialize {
     let mut out = Vec::new();
-    {
-      let mut ser = Serializer::new(&mut out);
-      value.serialize(&mut ser).unwrap();
-    }
-    out
+    try!(to_writer(&mut out, value));
+    Ok(out)
+}
+
+pub fn to_writer<T, W: io::Write>(out: W, value: &T) -> Result<(), Error> where T : ser::Serialize {
+    let mut ser = Serializer::new(out);
+    try!(value.serialize(&mut ser));
+    Ok(())
 }
