@@ -6,15 +6,16 @@ extern crate serde;
 extern crate spki_sexp;
 extern crate quickcheck;
 
-use quickcheck::{Arbitrary};
+use quickcheck::Arbitrary;
 use serde::{ser,de};
 use std::fmt;
+use std::cmp;
 use std::io::Write;
 use std::iter::Iterator;
 
 use spki_sexp::*;
 
-fn vec8_as_str(v :&Vec<u8>) -> String {
+fn vec8_as_str(v: &[u8]) -> String {
   String::from_utf8_lossy(v).into_owned()
 }
 
@@ -32,13 +33,12 @@ impl quickcheck::Arbitrary for Tok {
     match u64::arbitrary(g) % 3 {
       0 => Tok(SexpToken::OpenParen),
       1 => Tok(SexpToken::CloseParen),
-      2 => Tok(SexpToken::Atom(quickcheck::Arbitrary::arbitrary(g))),
+      2 => { let mut val : Vec<u8> = quickcheck::Arbitrary::arbitrary(g); val.truncate(8); Tok(SexpToken::Atom(val)) },
       n => panic!("Unexpected value mod 3: {:?}", n)
     }
   }
 
   fn shrink(&self) -> Box<Iterator<Item=Tok>+'static> {
-//    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
     match *self {
       Tok(SexpToken::OpenParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::CloseParen) => quickcheck::empty_shrinker(),
@@ -77,7 +77,7 @@ fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq
 }
 
 fn round_trip_prop_eq<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool) -> Result<bool, Error> {
-  round_trip_prop(val, verbose, std::cmp::PartialEq::eq)
+  round_trip_prop(val, verbose, cmp::PartialEq::eq)
 }
 
 
@@ -271,4 +271,36 @@ impl quickcheck::Arbitrary for SomeEnum {
 #[quickcheck]
 fn serde_round_trip_someenum(val: SomeEnum) -> Result<bool, Error> {
   round_trip_prop_eq(val, false)
+}
+
+
+#[quickcheck]
+fn serde_round_trip_incremental_option_u64(toks: Vec<Tok>, chunks: Vec<u16>) -> Result<bool, Error> {
+    let toks : Vec<SexpToken> = toks.iter().map(detok).collect();
+    // writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
+    let buf = encode((&toks).iter());
+    // writeln!(std::io::stderr(),"Encoded: {:?}", vec8_as_str(&buf)).unwrap();
+
+    let mut dec = spki_sexp::Tokeniser::new();
+    let mut outputs = Vec::new();
+    let offs = vec![0].into_iter().chain(chunks.into_iter())
+        .scan(0usize, |a, n| { *a += n as usize; Some (*a)} )
+        .take_while(|&n| n < buf.len())
+        .chain(vec![buf.len()].into_iter())
+        .collect::<Vec<usize>>();
+
+    // writeln!(std::io::stderr(),"Offsets: {:?}", offs);
+    for (&start, &end) in offs.iter().zip(offs.iter().skip(1)) {
+        dec.feed(&buf[start..end]);
+        // writeln!(std::io::stderr(),"Feed: {:?}, {:?}", start..end, vec8_as_str(&buf[start..end])).unwrap();
+
+        while let Some(it) = dec.take() {
+            // writeln!(std::io::stderr(),"Took: {:?}", it);
+            outputs.push(it.expect("take"));
+        }
+    }
+
+    // writeln!(std::io::stderr(),"Result: {:?}: {:?}", outputs == toks, outputs).unwrap();
+
+    Ok(outputs == toks)
 }

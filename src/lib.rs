@@ -18,7 +18,7 @@ mod tokeniser;
 pub use writer::Serializer;
 pub use reader::Deserializer;
 
-pub use tokeniser::{encode,tokenise, TokenError};
+pub use tokeniser::{encode,tokenise, TokenError, Tokeniser};
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum SexpToken {

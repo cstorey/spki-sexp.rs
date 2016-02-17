@@ -1,5 +1,8 @@
 use std::iter::Iterator;
+use std::collections::VecDeque;
 use std::io;
+use std::mem;
+use std::cmp;
 use super::SexpToken;
 
 quick_error! {
@@ -17,6 +20,8 @@ quick_error! {
         }
     }
 }
+
+
 
 pub fn encode<'a, I>(it : I) -> Vec<u8> where I : Iterator<Item=&'a SexpToken> {
   let mut out = vec![];
@@ -40,6 +45,7 @@ pub struct TokenisingIterator<I: Iterator<Item=Result<u8, io::Error>>> {
 
 const OPEN_PAREN : u8 = '(' as u8;
 const CLOSE_PAREN : u8 = ')' as u8;
+const COLON : u8 = ':' as u8;
 const ZERO : u8 = '0' as u8;
 const NINE : u8 = '9' as u8;
 
@@ -78,7 +84,7 @@ fn read_atom<'a, I>(first_char: u8, it : &mut I) -> Result<Vec<u8>, TokenError> 
       let digit = c - ZERO;
       len = len * 10 + digit as usize;
 //      writeln!(::std::io::stderr(),"read_atom! {:?}; len:{:?}" , c as char, len).unwrap();
-    } else if c == ':' as u8 {
+    } else if c == COLON {
 //      writeln!(::std::io::stderr(),"read_atom! Colon!");
       break;
     } else {
@@ -97,4 +103,59 @@ fn read_atom<'a, I>(first_char: u8, it : &mut I) -> Result<Vec<u8>, TokenError> 
 
 pub fn tokenise<I:Iterator<Item=Result<u8, io::Error>>>(it : I) -> TokenisingIterator<I> {
   TokenisingIterator { iter: it }
+}
+
+enum TokState {
+    Start,
+    ReadingLen(usize),
+    ReadingAtomBody(usize, Vec<u8>),
+}
+
+pub struct Tokeniser {
+    inbuf : VecDeque<u8>,
+    state: TokState,
+}
+
+impl Tokeniser {
+    pub fn new() -> Tokeniser {
+        Tokeniser { inbuf: VecDeque::new(), state: TokState::Start }
+    }
+
+    pub fn feed(&mut self, buf: &[u8]) {
+        self.inbuf.extend(buf)
+    }
+
+    pub fn take(&mut self) -> Option<Result<SexpToken, TokenError>> {
+        if let TokState::Start = self.state {
+            match self.inbuf.pop_front() {
+              Some(c) if c == OPEN_PAREN => return Some(Ok(SexpToken::OpenParen))
+            , Some(c) if c == CLOSE_PAREN => return Some(Ok(SexpToken::CloseParen))
+            , Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen((c - ZERO) as usize); }
+            , None => return None
+            , Some(other) => return Some(Err(TokenError::BadChar(other)))
+            };
+        }
+
+        if let TokState::ReadingLen(n) = self.state {
+            match self.inbuf.pop_front() {
+              Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize); }
+            , Some(c) if c == COLON => { self.state = TokState::ReadingAtomBody(n, Vec::new()) }
+            , Some(other) => return Some(Err(TokenError::BadChar(other)))
+            , None => return None
+            };
+        }
+
+        if let TokState::ReadingAtomBody(len, mut buf) = mem::replace(&mut self.state, TokState::Start) {
+            // let remaining = ...
+            let remaining = cmp::min(self.inbuf.len(), len - buf.len());
+            buf.extend(self.inbuf.drain(..remaining));
+
+            if buf.len() == len {
+                return Some(Ok(SexpToken::Atom(buf)))
+            } else {
+                self.state = TokState::ReadingAtomBody(len, buf)
+            }
+        }
+        None
+    }
 }
