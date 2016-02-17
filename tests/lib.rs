@@ -10,7 +10,7 @@ use quickcheck::{Arbitrary};
 use serde::{ser,de};
 use std::fmt;
 use std::io::Write;
-use std::iter::{Iterator, FromIterator};
+use std::iter::Iterator;
 
 use spki_sexp::*;
 
@@ -41,11 +41,9 @@ impl quickcheck::Arbitrary for Tok {
 //    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
     match *self {
       Tok(SexpToken::OpenParen) => quickcheck::empty_shrinker(),
-      Tok(SexpToken::CloseParen) => quickcheck::single_shrinker(Tok(SexpToken::OpenParen)),
+      Tok(SexpToken::CloseParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::Str(ref x)) => {
-	let chained = quickcheck::single_shrinker(Tok(SexpToken::CloseParen))
-		      .chain(quickcheck::single_shrinker(Tok(SexpToken::OpenParen)))
-		      .chain(x.shrink().map(SexpToken::Str).map(Tok));
+	let chained = x.shrink().map(SexpToken::Str).map(Tok);
 	Box::new(chained)
       }
     }
@@ -54,14 +52,20 @@ impl quickcheck::Arbitrary for Tok {
 
 
 #[quickcheck]
-fn round_trip_tokens(toks : Vec<Tok>) -> bool {
+fn round_trip_tokens(toks : Vec<Tok>) -> Result<bool, spki_sexp::Error> {
   let toks : Vec<SexpToken> = toks.iter().map(detok).collect();
-//   writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
+  // writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
   let encd = encode((&toks).iter());
-//   writeln!(std::io::stderr(),"{:?}", vec8_as_str(&encd)).unwrap();
-  let res = Vec::from_iter(tokenise(encd.iter().map(|p|*p)));
-//   writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, vec8_as_str(&encd), res, res == toks).unwrap();
-  res == toks
+  // writeln!(std::io::stderr(),"Encoded: {:?}", vec8_as_str(&encd)).unwrap();
+  let res : Vec<SexpToken> = match tokenise(encd.into_iter().map(Ok)).collect() {
+    Ok(res) => res,
+    Err(e) => {
+      // writeln!(std::io::stderr(),"Decode error: {:?}", e).unwrap();
+     return Err(e.into());
+    }
+  };
+  // writeln!(std::io::stderr(),"{:?} -> {:?} -> {:?} => {:?}", toks, (), res, res == toks).unwrap();
+  Ok(res == toks)
 }
 
 fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool, equalish: fn(&T, &T) -> bool) -> bool{

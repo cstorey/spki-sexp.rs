@@ -1,7 +1,9 @@
 extern crate core;
 extern crate rand;
-
 extern crate serde;
+
+#[macro_use]
+extern crate quick_error;
 
 use serde::{ser,de};
 
@@ -16,7 +18,7 @@ mod tokeniser;
 pub use writer::Serializer;
 pub use reader::Deserializer;
 
-pub use tokeniser::{encode,tokenise};
+pub use tokeniser::{encode,tokenise, TokenError};
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum SexpToken {
@@ -29,6 +31,7 @@ pub enum SexpToken {
 pub enum Error {
   SyntaxError(String),
   UnexpectedTokenError(SexpToken, Vec<SexpToken>),
+  BadTokenError(TokenError),
   EofError,
   IoError(io::Error),
   InvalidInt(std::num::ParseIntError),
@@ -43,6 +46,7 @@ impl error::Error for Error {
     match *self {
       Error::SyntaxError(_) => "Syntax error",
       Error::UnexpectedTokenError(_, _) => "Unexpected Token",
+      Error::BadTokenError(ref e) => error::Error::description(e),
       Error::EofError => "EOF",
       Error::IoError(ref e) => error::Error::description(e),
       Error::InvalidInt(ref e) => error::Error::description(e),
@@ -89,6 +93,12 @@ impl From<io::Error> for Error {
   }
 }
 
+impl From<TokenError> for Error {
+  fn from(error: TokenError) -> Error {
+    Error::BadTokenError(error)
+  }
+}
+
 impl From<std::num::ParseIntError> for Error {
   fn from(error: std::num::ParseIntError) -> Error {
     Error::InvalidInt(error)
@@ -109,7 +119,15 @@ impl From<core::num::ParseFloatError> for Error {
 }
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {
-    let mut de = Deserializer::new(value.iter().map(|p|*p));
+    let mut de = Deserializer::new(value.iter().cloned().map(Ok));
+    let value = try!(de::Deserialize::deserialize(&mut de));
+    // Make sure the whole stream has been consumed.
+    try!(de.end());
+    Ok(value)
+}
+
+pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T, Error> where T : de::Deserialize {
+    let mut de = Deserializer::new(rdr.bytes());
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
     try!(de.end());

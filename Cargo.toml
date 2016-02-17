@@ -4,6 +4,7 @@ name = "spki-sexp"
 version = "0.0.1"
 
 [dependencies]
+quick-error = "1.0.0"
 quickcheck = "*"
 quickcheck_macros = "*"
 rand = "0.3.14"
