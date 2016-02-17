@@ -125,14 +125,14 @@ impl Tokeniser {
         self.inbuf.extend(buf)
     }
 
-    pub fn take(&mut self) -> Option<Result<SexpToken, TokenError>> {
+    pub fn take(&mut self) -> Result<Option<SexpToken>, TokenError> {
         if let TokState::Start = self.state {
             match self.inbuf.pop_front() {
-              Some(c) if c == OPEN_PAREN => return Some(Ok(SexpToken::OpenParen))
-            , Some(c) if c == CLOSE_PAREN => return Some(Ok(SexpToken::CloseParen))
+              Some(c) if c == OPEN_PAREN => return Ok(Some(SexpToken::OpenParen))
+            , Some(c) if c == CLOSE_PAREN => return Ok(Some(SexpToken::CloseParen))
             , Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen((c - ZERO) as usize); }
-            , None => return None
-            , Some(other) => return Some(Err(TokenError::BadChar(other)))
+            , None => return Ok(None)
+            , Some(other) => return Err(TokenError::BadChar(other))
             };
         }
 
@@ -140,8 +140,8 @@ impl Tokeniser {
             match self.inbuf.pop_front() {
               Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize); }
             , Some(c) if c == COLON => { self.state = TokState::ReadingAtomBody(n, Vec::new()) }
-            , Some(other) => return Some(Err(TokenError::BadChar(other)))
-            , None => return None
+            , Some(other) => return Err(TokenError::BadChar(other))
+            , None => return Ok(None)
             };
         }
 
@@ -151,11 +151,11 @@ impl Tokeniser {
             buf.extend(self.inbuf.drain(..remaining));
 
             if buf.len() == len {
-                return Some(Ok(SexpToken::Atom(buf)))
+                return Ok(Some(SexpToken::Atom(buf)))
             } else {
                 self.state = TokState::ReadingAtomBody(len, buf)
             }
         }
-        None
+        Ok(None)
     }
 }

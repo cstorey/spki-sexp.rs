@@ -43,8 +43,8 @@ impl quickcheck::Arbitrary for Tok {
       Tok(SexpToken::OpenParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::CloseParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::Atom(ref x)) => {
-	let chained = x.shrink().map(SexpToken::Atom).map(Tok);
-	Box::new(chained)
+        let chained = x.shrink().map(SexpToken::Atom).map(Tok);
+        Box::new(chained)
       }
     }
   }
@@ -255,15 +255,15 @@ impl quickcheck::Arbitrary for SomeEnum {
       SomeEnum::Foo => quickcheck::empty_shrinker(),
       SomeEnum::Quux => quickcheck::single_shrinker(SomeEnum::Foo),
       SomeEnum::Bar(ref x) => {
-	let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-		      .chain(x.shrink().map(SomeEnum::Bar));
-	Box::new(chained)
+        let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+                      .chain(x.shrink().map(SomeEnum::Bar));
+        Box::new(chained)
       }
       SomeEnum::Baz { some: x } => {
-	let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-		      .chain(x.shrink().map(|n| SomeEnum::Baz { some: n}));
-	Box::new(chained)
-      } 
+        let chained = quickcheck::single_shrinker(SomeEnum::Foo)
+                      .chain(x.shrink().map(|n| SomeEnum::Baz { some: n}));
+        Box::new(chained)
+      }
     }
   }
 }
@@ -294,9 +294,9 @@ fn serde_round_trip_incremental_option_u64(toks: Vec<Tok>, chunks: Vec<u16>) -> 
         dec.feed(&buf[start..end]);
         // writeln!(std::io::stderr(),"Feed: {:?}, {:?}", start..end, vec8_as_str(&buf[start..end])).unwrap();
 
-        while let Some(it) = dec.take() {
+        while let Some(it) = try!(dec.take()) {
             // writeln!(std::io::stderr(),"Took: {:?}", it);
-            outputs.push(it.expect("take"));
+            outputs.push(it);
         }
     }
 
