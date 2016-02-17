@@ -24,7 +24,7 @@ pub use tokeniser::{encode,tokenise, TokenError};
 pub enum SexpToken {
   OpenParen,
   CloseParen,
-  Str(String)
+  Atom(Vec<u8>)
 }
 
 #[derive(Debug)]

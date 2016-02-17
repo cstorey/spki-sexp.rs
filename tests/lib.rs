@@ -32,7 +32,7 @@ impl quickcheck::Arbitrary for Tok {
     match u64::arbitrary(g) % 3 {
       0 => Tok(SexpToken::OpenParen),
       1 => Tok(SexpToken::CloseParen),
-      2 => Tok(SexpToken::Str(quickcheck::Arbitrary::arbitrary(g))),
+      2 => Tok(SexpToken::Atom(quickcheck::Arbitrary::arbitrary(g))),
       n => panic!("Unexpected value mod 3: {:?}", n)
     }
   }
@@ -42,8 +42,8 @@ impl quickcheck::Arbitrary for Tok {
     match *self {
       Tok(SexpToken::OpenParen) => quickcheck::empty_shrinker(),
       Tok(SexpToken::CloseParen) => quickcheck::empty_shrinker(),
-      Tok(SexpToken::Str(ref x)) => {
-	let chained = x.shrink().map(SexpToken::Str).map(Tok);
+      Tok(SexpToken::Atom(ref x)) => {
+	let chained = x.shrink().map(SexpToken::Atom).map(Tok);
 	Box::new(chained)
       }
     }

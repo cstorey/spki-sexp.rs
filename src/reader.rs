@@ -37,10 +37,10 @@ impl<I> Deserializer<I> where I : Iterator<Item=Result<u8, io::Error>> {
 
   fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
     match self.iter.next() {
-      Some(Ok(SexpToken::Str(ref s))) if s == "none" => visitor.visit_none()
+      Some(Ok(SexpToken::Atom(ref s))) if &**s == "none".as_bytes() => visitor.visit_none()
     , Some(Ok(SexpToken::OpenParen)) => {
         match self.iter.next() {
-          Some(Ok(SexpToken::Str(ref s))) if s == "some" => {
+          Some(Ok(SexpToken::Atom(ref s))) if &**s == "some".as_bytes() => {
             let result = visitor.visit_some(self);
             match self.iter.next() {
               Some(Ok(SexpToken::CloseParen)) => result
@@ -48,12 +48,12 @@ impl<I> Deserializer<I> where I : Iterator<Item=Result<u8, io::Error>> {
             , None => Err(Error::EofError)
             }
           }
-        , Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("?".to_string())]))
+        , Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("?".as_bytes().to_vec())]))
         , None => Err(Error::EofError)
         }
     }
     , None => Err(Error::EofError)
-    , Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::CloseParen, SexpToken::Str("?".to_string())]))
+    , Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::CloseParen, SexpToken::Atom("?".as_bytes().to_vec())]))
     }
   }
 }
@@ -72,52 +72,52 @@ impl<I> de::Deserializer for Deserializer<I> where I : Iterator<Item=Result<u8, 
 
     fn visit_string<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
-            Some(Ok(SexpToken::Str(ref s))) => visitor.visit_str(s),
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("<String>".to_string())])),
+            Some(Ok(SexpToken::Atom(ref s))) => visitor.visit_bytes(s),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<String>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }
 
     fn visit_u64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
-            Some(Ok(SexpToken::Str(ref s))) => match s.parse() {
+            Some(Ok(SexpToken::Atom(ref s))) => match String::from_utf8_lossy(s).parse() {
                 Ok(n) => visitor.visit_u64(n),
                 Err(e) => Err(Error::InvalidInt(e)),
             },
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("<u64>".to_string())])),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<u64>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }
 
     fn visit_i64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
-            Some(Ok(SexpToken::Str(ref s))) => match s.parse() {
+            Some(Ok(SexpToken::Atom(ref s))) => match String::from_utf8_lossy(s).parse() {
                 Ok(n) => visitor.visit_i64(n),
                 Err(e) => Err(Error::InvalidInt(e)),
             },
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("<i64>".to_string())])),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<i64>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }
 
     fn visit_f64<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
-            Some(Ok(SexpToken::Str(ref s))) => match s.parse() {
+            Some(Ok(SexpToken::Atom(ref s))) => match String::from_utf8_lossy(s).parse() {
                 Ok(n) => visitor.visit_f64(n),
                 Err(e) => Err(Error::InvalidFloat(e)),
             },
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("<f64>".to_string())])),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<f64>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }
 
     fn visit_bool<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
-            Some(Ok(SexpToken::Str(ref s))) => match s.parse() {
+            Some(Ok(SexpToken::Atom(ref s))) => match String::from_utf8_lossy(s).parse() {
                 Ok(n) => visitor.visit_bool(n),
                 Err(e) => Err(Error::InvalidBool(e)),
             },
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Str("<bool>".to_string())])),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<bool>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }
@@ -264,7 +264,7 @@ impl<'a, I: Iterator<Item=Result<u8, io::Error>> + 'a> de::MapVisitor for MapPar
 //    writeln!(std::io::stderr(), "MapParser::visit_value: peek: {:?}", self.de.iter.peek()).unwrap();
     match self.de.iter.peek().map(|p| p.clone()) {
       Some(&Ok(ref tok @ SexpToken::CloseParen)) => {
-        return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::Str("Any value, honest".to_string())]))
+        return Err(Error::UnexpectedTokenError(tok.clone(), vec![SexpToken::Atom("Any value, honest".as_bytes().to_vec())]))
       }
       None => return Err(Error::EofError),
       _ => (),
