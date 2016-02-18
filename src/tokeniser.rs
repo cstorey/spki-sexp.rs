@@ -111,16 +111,16 @@ impl Tokeniser {
 }
 
 const BUF_SIZE : usize = 4096;
-pub struct TokenisingIterator<I> {
+pub struct TokenisingIterator<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
     iter: I,
     toks: Tokeniser,
 }
 
-pub fn tokenise<I:Iterator<Item=Result<u8, E>>, E: Into<TokenError>>(it : I) -> TokenisingIterator<I> {
+pub fn tokenise<I:Iterator<Item=Result<u8, E>>, E: Into<TokenError>>(it : I) -> TokenisingIterator<I, E> {
   TokenisingIterator { iter: it, toks: Tokeniser::new() }
 }
 
-impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for TokenisingIterator<I> {
+impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for TokenisingIterator<I, E> {
     type Item = Result<SexpToken, TokenError>;
     fn next(&mut self) -> Option<Result<SexpToken, TokenError>> {
         loop {
@@ -138,3 +138,5 @@ impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for Toke
         }
     }
 }
+
+

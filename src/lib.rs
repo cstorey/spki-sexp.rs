@@ -10,16 +10,19 @@ use serde::{ser,de};
 use std::io::{self, Write};
 use std::iter::Iterator;
 use std::{error,fmt};
-use std::collections::VecDeque;
 
 mod writer;
 mod reader;
 mod tokeniser;
+mod packetiser;
 
 pub use writer::Serializer;
 pub use reader::Deserializer;
 
 pub use tokeniser::{encode,tokenise, TokenError, Tokeniser};
+pub use packetiser::Packetiser;
+
+fn okay<X>(val: X) -> Result<X, TokenError> { Ok(val) }
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum SexpToken {
@@ -120,7 +123,6 @@ impl From<core::num::ParseFloatError> for Error {
 }
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {
-    fn okay<X>(val: X) -> Result<X, TokenError> { Ok(val) }
     let mut de = Deserializer::new(value.iter().cloned().map(okay));
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
@@ -147,3 +149,5 @@ pub fn to_writer<T, W: io::Write>(out: W, value: &T) -> Result<(), Error> where 
     try!(value.serialize(&mut ser));
     Ok(())
 }
+
+

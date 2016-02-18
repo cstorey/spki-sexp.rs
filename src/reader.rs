@@ -1,25 +1,34 @@
 use std::iter::{Iterator, Peekable};
+use std::convert::From;
 use serde::{self, de};
 
 use super::{Error,SexpToken};
-use tokeniser::{TokenisingIterator,TokenError, tokenise};
+use tokeniser::{TokenisingIterator, TokenError, tokenise};
 
-pub struct Deserializer<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
-  iter : Peekable<TokenisingIterator<I>>
+pub struct Deserializer<I, E> where I : Iterator<Item=Result<SexpToken, E>>, Error: From<E> {
+  iter : Peekable<I>
 }
 
-impl<I, E> Deserializer<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
-  pub fn new (iter: I) -> Deserializer<I, E> {
+impl<I, E> Deserializer<I, E> where I : Iterator<Item=Result<SexpToken, E>>, Error: From<E> {
+  pub fn of_tokens (iter: I) -> Deserializer<I, E> {
+    Deserializer { iter: iter.peekable() }
+  }
+}
+
+impl<I, E> Deserializer<TokenisingIterator<I, E>, TokenError> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
+  pub fn new (iter: I) -> Deserializer<TokenisingIterator<I, E>, TokenError> {
     Deserializer { iter: tokenise(iter).peekable() }
   }
+}
 
+impl<I, E> Deserializer<I, E> where I : Iterator<Item=Result<SexpToken, E>>, Error: From<E> {
   pub fn end(mut self) -> Result<(), Error> {
     match self.iter.next() {
       Some(Ok(ref tok)) => {
 //      writeln!(std::io::stderr(), "Deserializer::end: found at end: {:?}", tok);
         Err(Error::UnexpectedTokenError(tok.clone(), vec![]))
       }
-    , Some(Err(e)) => Err(e.into())
+    , Some(Err(e)) => Err(From::from(e))
     , None => Ok(())
     }
   }
@@ -32,7 +41,6 @@ impl<I, E> Deserializer<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<To
      // writeln!(std::io::stderr(), "Deserializer::parse_map(): {:?}", self.iter.peek());
      visitor.visit_map(MapParser{ de: self })
    }
-
 
   fn parse_option<V>(&mut self, mut visitor: V) -> Result<V::Value, Error> where V: de::Visitor {
     match self.iter.next() {
@@ -57,7 +65,7 @@ impl<I, E> Deserializer<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<To
   }
 }
 
-impl<I, E> de::Deserializer for Deserializer<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
+impl<I, E> de::Deserializer for Deserializer<I, E> where I : Iterator<Item=Result<SexpToken, E>>, Error: From<E> {
    type Error = Error;
    fn visit<V>(&mut self, _visitor: V) -> Result<V::Value, Error> where V : de::Visitor {
        Err(serde::de::Error::syntax("spki-sexp does not support Deserializer::visit"))
@@ -162,7 +170,7 @@ impl<I, E> de::Deserializer for Deserializer<I, E> where I : Iterator<Item=Resul
   }
 }
 
-impl<'a, I, E> de::VariantVisitor for Deserializer<I, E> where I: Iterator<Item=Result<u8, E>> + 'a, E: Into<TokenError> {
+impl<'a, I, E> de::VariantVisitor for Deserializer<I, E> where I: Iterator<Item=Result<SexpToken, E>> + 'a, Error: From<E> {
     type Error = Error;
     fn visit_variant<V: de::Deserialize>(&mut self) -> Result<V, Self::Error>{
         // writeln!(std::io::stderr(), "EnumParser::visit_variant: peek: {:?}", self.iter.peek()).unwrap();
@@ -203,11 +211,11 @@ impl<'a, I, E> de::VariantVisitor for Deserializer<I, E> where I: Iterator<Item=
     }
 }
 
-struct ListParser<'a, I, E> where I: Iterator<Item=Result<u8, E>> + 'a, E: 'a + Into<TokenError> {
+struct ListParser<'a, I, E> where I: Iterator<Item=Result<SexpToken, E>> + 'a, E: 'a, Error: From<E> {
   de: &'a mut Deserializer<I, E>
 }
 //
-impl<'a, I, E> de::SeqVisitor for ListParser<'a, I, E> where I: Iterator<Item=Result<u8, E>> + 'a, E: Into<TokenError> + 'a  {
+impl<'a, I, E> de::SeqVisitor for ListParser<'a, I, E> where I: Iterator<Item=Result<SexpToken, E>> + 'a, E: 'a, Error: From<E> {
   type Error = Error;
   fn visit<T>(&mut self) -> Result<Option<T>, Error> where T : de::Deserialize {
 //    writeln!(std::io::stderr(), "ListParser::visit: peek: {:?}", self.de.iter.peek()).unwrap();
@@ -235,11 +243,11 @@ impl<'a, I, E> de::SeqVisitor for ListParser<'a, I, E> where I: Iterator<Item=Re
   }
 }
 
-struct MapParser<'a, I: Iterator<Item=Result<u8, E>> + 'a, E: 'a + Into<TokenError>> {
+struct MapParser<'a, I, E> where I: Iterator<Item=Result<SexpToken, E>> + 'a, E: 'a, Error: From<E> {
   de: &'a mut Deserializer<I, E>
 }
 
-impl<'a, I, E> de::MapVisitor for MapParser<'a, I, E> where I: Iterator<Item=Result<u8, E>> + 'a, E: Into<TokenError> + 'a  {
+impl<'a, I, E> de::MapVisitor for MapParser<'a, I, E> where I: Iterator<Item=Result<SexpToken, E>> + 'a, E: 'a, Error: From<E> {
   type Error = Error;
   fn visit_key<K>(&mut self) -> Result<Option<K>, Error> where K : de::Deserialize {
     // writeln!(std::io::stderr(), "MapParser::visit_key: peek: {:?}", self.de.iter.peek()).unwrap();
