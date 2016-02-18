@@ -1,5 +1,4 @@
 extern crate core;
-extern crate rand;
 extern crate serde;
 
 #[macro_use]
