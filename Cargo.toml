@@ -5,8 +5,10 @@ version = "0.0.1"
 
 [dependencies]
 quick-error = "1.0.0"
-quickcheck = "*"
-quickcheck_macros = "*"
 rand = "0.3.14"
-serde = "0.6.13"
-serde_macros = "0.6.13"
+serde = "0.6.0"
+serde_macros = "0.6.0"
+
+[dev-dependencies]
+quickcheck = "0.2.25"
+quickcheck_macros = "0.2.26"
