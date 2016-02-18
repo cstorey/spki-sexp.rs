@@ -10,6 +10,7 @@ use serde::{ser,de};
 use std::io::{self, Write};
 use std::iter::Iterator;
 use std::{error,fmt};
+use std::collections::VecDeque;
 
 mod writer;
 mod reader;
@@ -119,7 +120,8 @@ impl From<core::num::ParseFloatError> for Error {
 }
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {
-    let mut de = Deserializer::new(value.iter().cloned().map(Ok));
+    fn okay<X>(val: X) -> Result<X, TokenError> { Ok(val) }
+    let mut de = Deserializer::new(value.iter().cloned().map(okay));
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
     try!(de.end());

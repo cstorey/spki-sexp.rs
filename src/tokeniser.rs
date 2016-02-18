@@ -69,7 +69,6 @@ impl Tokeniser {
     }
 
     pub fn take(&mut self) -> Result<Option<SexpToken>, TokenError> {
-        use std::io::Write;
         // writeln!(::std::io::stderr(),"Pre-start: {:?}", self);
         while let TokState::Start = self.state {
             match self.inbuf.pop_front() {
