@@ -53,11 +53,13 @@ impl quickcheck::Arbitrary for Tok {
 
 #[quickcheck]
 fn round_trip_tokens(toks : Vec<Tok>) -> Result<bool, spki_sexp::Error> {
+  fn okay<X>(val: X) -> Result<X, TokenError> { Ok(val) }
+
   let toks : Vec<SexpToken> = toks.iter().map(detok).collect();
   // writeln!(std::io::stderr(),"orig: {:?}", toks).unwrap();
-  let encd = encode((&toks).iter());
+  let encd : Vec<u8> = encode((&toks).iter());
   // writeln!(std::io::stderr(),"Encoded: {:?}", vec8_as_str(&encd)).unwrap();
-  let res : Vec<SexpToken> = match tokenise(encd.into_iter().map(Ok)).collect() {
+  let res : Vec<SexpToken> = match tokenise(encd.into_iter().map(okay)).collect() {
     Ok(res) => res,
     Err(e) => {
       // writeln!(std::io::stderr(),"Decode error: {:?}", e).unwrap();

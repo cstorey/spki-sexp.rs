@@ -39,78 +39,21 @@ pub fn encode<'a, I>(it : I) -> Vec<u8> where I : Iterator<Item=&'a SexpToken> {
   out
 }
 
-pub struct TokenisingIterator<I: Iterator<Item=Result<u8, io::Error>>> {
-  iter: I
-}
-
 const OPEN_PAREN : u8 = '(' as u8;
 const CLOSE_PAREN : u8 = ')' as u8;
 const COLON : u8 = ':' as u8;
 const ZERO : u8 = '0' as u8;
 const NINE : u8 = '9' as u8;
 
-impl<'a, I> Iterator for TokenisingIterator<I> where I :Iterator<Item=Result<u8, io::Error>> {
-  type Item = Result<SexpToken, TokenError>;
-  fn next(&mut self) -> Option<Result<SexpToken, TokenError>> {
-    use std::io::Write;
-    let current = self.iter.next();
-//    writeln!(::std::io::stderr(),"TokenisingIterator::next: read: {:?}", current);
-    let r = match current {
-      Some(Ok(c)) if c == OPEN_PAREN => { Some(Ok(SexpToken::OpenParen)) }
-    , Some(Ok(c)) if c == CLOSE_PAREN => { Some(Ok(SexpToken::CloseParen)) }
-    , Some(Ok(c)) if c >= ZERO && c <= NINE => {
-        let s = match read_atom(c, &mut self.iter) { Ok(s) => s, Err(e) => return Some(Err(e)), };
-        Some(Ok(SexpToken::Atom(s)))
-    }
-    , Some(Err(e)) => Some(Err(e.into()))
-    , None => None
-    , Some(Ok(other)) => {
-//        writeln!(::std::io::stderr(),"TokenisingIterator::next: not {:?}, or {:?}, wat: {:?}({:?})", [OPEN_PAREN, CLOSE_PAREN], ZERO..NINE, other as char, other);
-        Some(Err(TokenError::BadChar(other)))
-    }
-    };
-    // writeln!(std::io::stderr(),"TokenisingIterator::next: peek:{:?} => {:?}" , current.map(|c| c as char), r);
-    r
-  }
-}
 
-fn read_atom<'a, I>(first_char: u8, it : &mut I) -> Result<Vec<u8>, TokenError> where I : Iterator<Item=Result<u8, io::Error>> {
-    use std::io::Write;
-//  writeln!(::std::io::stderr(),"read_atom: {:?}" , first_char as char);
-  let mut len = first_char as usize  - ZERO as usize;
-  while let Some(c) = it.next() {
-    let c = try!(c);
-    if c >= ZERO && c <= NINE {
-      let digit = c - ZERO;
-      len = len * 10 + digit as usize;
-//      writeln!(::std::io::stderr(),"read_atom! {:?}; len:{:?}" , c as char, len).unwrap();
-    } else if c == COLON {
-//      writeln!(::std::io::stderr(),"read_atom! Colon!");
-      break;
-    } else {
-//      writeln!(::std::io::stderr(),"read_atom! wat: {:?}", c);
-      return Err(TokenError::BadChar(c))
-    }
-  }
-
-//  writeln!(::std::io::stderr(),"read_atom! len: {:?}", len);
-  let bytes : Vec<u8> = try!(it.take(len).collect());
-//  writeln!(::std::io::stderr(),"read_atom! {:?}", s);
-  Ok(bytes)
-}
-
-
-
-pub fn tokenise<I:Iterator<Item=Result<u8, io::Error>>>(it : I) -> TokenisingIterator<I> {
-  TokenisingIterator { iter: it }
-}
-
+#[derive(Debug)]
 enum TokState {
     Start,
     ReadingLen(usize),
     ReadingAtomBody(usize, Vec<u8>),
 }
 
+#[derive(Debug)]
 pub struct Tokeniser {
     inbuf : VecDeque<u8>,
     state: TokState,
@@ -126,7 +69,9 @@ impl Tokeniser {
     }
 
     pub fn take(&mut self) -> Result<Option<SexpToken>, TokenError> {
-        if let TokState::Start = self.state {
+        use std::io::Write;
+        // writeln!(::std::io::stderr(),"Pre-start: {:?}", self);
+        while let TokState::Start = self.state {
             match self.inbuf.pop_front() {
               Some(c) if c == OPEN_PAREN => return Ok(Some(SexpToken::OpenParen))
             , Some(c) if c == CLOSE_PAREN => return Ok(Some(SexpToken::CloseParen))
@@ -135,8 +80,9 @@ impl Tokeniser {
             , Some(other) => return Err(TokenError::BadChar(other))
             };
         }
+        // writeln!(::std::io::stderr(),"Post-start: {:?}", self);
 
-        if let TokState::ReadingLen(n) = self.state {
+        while let TokState::ReadingLen(n) = self.state {
             match self.inbuf.pop_front() {
               Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize); }
             , Some(c) if c == COLON => { self.state = TokState::ReadingAtomBody(n, Vec::new()) }
@@ -144,18 +90,52 @@ impl Tokeniser {
             , None => return Ok(None)
             };
         }
+        // writeln!(::std::io::stderr(),"Post-len: {:?}", self);
 
         if let TokState::ReadingAtomBody(len, mut buf) = mem::replace(&mut self.state, TokState::Start) {
             // let remaining = ...
             let remaining = cmp::min(self.inbuf.len(), len - buf.len());
             buf.extend(self.inbuf.drain(..remaining));
 
+            // writeln!(::std::io::stderr(),"Reading body: {}/{}", buf.len(), len);
             if buf.len() == len {
-                return Ok(Some(SexpToken::Atom(buf)))
+                // writeln!(::std::io::stderr(),"Body complete: {:?}", buf);
+                return Ok(Some(SexpToken::Atom(buf)));
             } else {
-                self.state = TokState::ReadingAtomBody(len, buf)
+                self.state = TokState::ReadingAtomBody(len, buf);
+                // writeln!(::std::io::stderr(),"Body partial: {:?}", self);
             }
         }
+        // writeln!(::std::io::stderr(),"Exit: {:?}", self);
         Ok(None)
+    }
+}
+
+const BUF_SIZE : usize = 4096;
+pub struct TokenisingIterator<I> {
+    iter: I,
+    toks: Tokeniser,
+}
+
+pub fn tokenise<I:Iterator<Item=Result<u8, E>>, E: Into<TokenError>>(it : I) -> TokenisingIterator<I> {
+  TokenisingIterator { iter: it, toks: Tokeniser::new() }
+}
+
+impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for TokenisingIterator<I> {
+    type Item = Result<SexpToken, TokenError>;
+    fn next(&mut self) -> Option<Result<SexpToken, TokenError>> {
+        loop {
+            match self.toks.take() {
+                Ok(Some(it)) => return Some(Ok(it)),
+                Err(e) => return Some(Err(e)),
+                Ok(None) => (),
+            }
+
+            match (&mut self.iter).take(BUF_SIZE).collect::<Result<Vec<u8>, E>>() {
+                Ok(ref buf) if buf.len() == 0 => return None,
+                Ok(buf) => self.toks.feed(&buf),
+                Err(e) => return Some(Err(e.into())),
+            }
+        }
     }
 }
