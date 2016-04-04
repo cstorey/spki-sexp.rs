@@ -16,7 +16,7 @@ mod tokeniser;
 mod packetiser;
 
 pub use writer::Serializer;
-pub use reader::Deserializer;
+pub use reader::Reader;
 
 pub use tokeniser::{encode,tokenise, TokenError, Tokeniser};
 pub use packetiser::Packetiser;
@@ -65,6 +65,12 @@ impl error::Error for Error {
   }
 }
 
+impl ser::Error for Error {
+    fn custom<T: Into<String>>(msg: T) -> Self {
+        Error::SyntaxError(msg.into())
+    }
+}
+
 impl fmt::Display for Error {
   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     write!(fmt, "It broke. Sorry")
@@ -72,8 +78,8 @@ impl fmt::Display for Error {
 }
 
 impl de::Error for Error {
-  fn syntax(msg: &str) -> Error {
-    Error::SyntaxError(msg.to_string())
+  fn custom<T: Into<String>>(msg: T) -> Self {
+    Error::SyntaxError(msg.into())
   }
 
   fn end_of_stream() -> Error {
@@ -122,7 +128,7 @@ impl From<core::num::ParseFloatError> for Error {
 }
 
 pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize {
-    let mut de = Deserializer::new(value.iter().cloned().map(okay));
+    let mut de = Reader::new(value.iter().cloned().map(okay));
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
     try!(de.end());
@@ -130,7 +136,7 @@ pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error> where T : de::Deserialize
 }
 
 pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T, Error> where T : de::Deserialize {
-    let mut de = Deserializer::new(rdr.bytes());
+    let mut de = Reader::new(rdr.bytes());
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
     try!(de.end());

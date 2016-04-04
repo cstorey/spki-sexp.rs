@@ -3,7 +3,7 @@ use std::mem;
 use serde::de;
 
 use super::{SexpToken, okay};
-use reader::Deserializer;
+use reader::Reader;
 use tokeniser::Tokeniser;
 
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl Packetiser {
             // writeln!(::std::io::stderr(),"state: {:?}", self);
             if self.parens_open == 0 {
                 let packet = mem::replace(&mut self.buf, VecDeque::new());
-                let mut de = Deserializer::of_tokens(packet.into_iter().map(okay));
+                let mut de = Reader::of_tokens(packet.into_iter().map(okay));
                 let value = try!(de::Deserialize::deserialize(&mut de));
                 try!(de.end());
                 return Ok(Some(value));
