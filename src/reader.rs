@@ -82,7 +82,15 @@ impl<I, E> de::Deserializer for Reader<I, E> where I : Iterator<Item=Result<Sexp
     fn deserialize_string<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
         match self.iter.next() {
             Some(Ok(SexpToken::Atom(ref s))) => visitor.visit_bytes(s),
-            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<String>".as_bytes().to_vec())])),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<string>".as_bytes().to_vec())])),
+            None => Err(Error::EofError),
+        }
+    }
+
+    fn deserialize_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor {
+        match self.iter.next() {
+            Some(Ok(SexpToken::Atom(ref s))) => visitor.visit_bytes(s),
+            Some(other) => Err(Error::UnexpectedTokenError(try!(other), vec![SexpToken::Atom("<bytes>".as_bytes().to_vec())])),
             None => Err(Error::EofError),
         }
     }

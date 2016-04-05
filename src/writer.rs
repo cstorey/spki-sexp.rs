@@ -13,10 +13,14 @@ impl<W> Serializer<W> where W : Write {
     Serializer{ writer : wr }
   }
 
-  fn write_str(&mut self, s: String) -> Result<(), Error> {
+  fn write_str(&mut self, s: &str) -> Result<(), Error> {
+    self.write_bytes(s.as_bytes())
+  }
+
+  fn write_bytes(&mut self, s: &[u8]) -> Result<(), Error> {
     let pfx = format!("{}:", s.len());
     try!(self.writer.write_all(pfx.into_bytes().as_slice()));
-    try!(self.writer.write_all(s.into_bytes().as_slice()));
+    try!(self.writer.write_all(s));
     Ok(())
   }
 
@@ -39,39 +43,39 @@ impl<W> Serializer<W> where W : Write {
   fn serialize_bool(&mut self, val: bool) -> Result<(), Error> {
     //writeln!(std::io::stderr(), "Serializer::serialize_bool: {:?}", val).unwrap();
     if val {
-      try!(self.write_str("true".to_string()))
+      try!(self.write_str("true"))
     } else {
-      try!(self.write_str("false".to_string()))
+      try!(self.write_str("false"))
     }
     Ok(())
   }
 //   // TODO: Consider using display-hints for types of atoms.
   fn serialize_u64(&mut self, v: u64) -> Result<(), Error> {
 //     writeln!(std::io::stderr(), "Serializer::serialize_u64: {:?}", v).unwrap();
-    Ok(try!(self.write_str(v.to_string())))
+    Ok(try!(self.write_str(&format!("{}", v))))
   }
   fn serialize_i64(&mut self, v: i64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::serialize_i64: {:?}", v).unwrap();
-    try!(self.write_str(v.to_string()));
-    Ok(())
+    Ok(try!(self.write_str(&format!("{}", v))))
   }
   fn serialize_f64(&mut self, v: f64) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::serialize_f64: {:?}", v).unwrap();
-    try!(self.write_str(v.to_string()));
-    Ok(())
+    Ok(try!(self.write_str(&format!("{}", v))))
   }
   fn serialize_str(&mut self, v: &str) -> Result<(), Error> {
-//     writeln!(std::io::stderr(), "Serializer::serialize_str: {:?}", v).unwrap();
-    self.write_str(format!("{}", v))
+    self.write_str(v)
+  }
+  fn serialize_bytes(&mut self, v: &[u8]) -> Result<(), Error> {
+    self.write_bytes(v)
   }
   fn serialize_none(&mut self) -> Result<(), Error> {
 //    writeln!(std::io::stderr(), "Serializer::serialize_none").unwrap();
-    self.write_str("none".to_string())
+    self.write_str("none")
   }
   fn serialize_some<T>(&mut self, v: T) -> Result<(), Error> where T: ser::Serialize {
  //    writeln!(std::io::stderr(), "Serializer::serialize_some(?)").unwrap();
     try!(self.open());
-    try!(self.write_str("some".to_string()));
+    try!(self.write_str("some"));
     try!(v.serialize(self));
     self.close()
   }
@@ -85,7 +89,7 @@ impl<W> Serializer<W> where W : Write {
 //   fn serialize_named_seq<V>(&mut self, name: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
 //     // writeln!(std::io::stderr(), "Serializer::serialize_named_seq:{}", name).unwrap();
 //     try!(self.open());
-//     try!(self.write_str(name.to_string()));
+//     try!(self.write_str(name));
 //     while let Some(()) = try!(visitor.visit(self)) {}
 //     self.close()
 //   }
@@ -113,7 +117,7 @@ impl<W> Serializer<W> where W : Write {
                           variant: &'static str) -> Result<(), Error> {
      // writeln!(std::io::stderr(), "Serializer::serialize_named_unit:{:?}", name).unwrap();
     try!(self.open());
-    try!(self.write_str(variant.to_string()));
+    try!(self.write_str(variant));
     Ok(try!(self.close()))
    }
 
@@ -122,7 +126,7 @@ impl<W> Serializer<W> where W : Write {
                               variant: &'static str, mut visitor: V)  -> Result<(), Error> {
      // writeln!(std::io::stderr(), "Serializer::serialize_named_unit:{:?}", name).unwrap();
     try!(self.open());
-    try!(self.write_str(variant.to_string()));
+    try!(self.write_str(variant));
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
    }
@@ -131,7 +135,7 @@ impl<W> Serializer<W> where W : Write {
                               _variant_index: usize,
                               variant: &'static str, mut visitor: V)  -> Result<(), Error> {
     try!(self.open());
-    try!(self.write_str(variant.to_string()));
+    try!(self.write_str(variant));
     while let Some(()) = try!(visitor.visit(self)) {}
     self.close()
    }

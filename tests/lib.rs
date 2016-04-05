@@ -78,6 +78,15 @@ fn round_trip_prop<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq
   Ok(equalish(&dec, &val))
 }
 
+#[test]
+fn test_bytes_repr() {
+    use serde::bytes::Bytes;
+    let val : Bytes = b"hello world!".as_ref().into();
+    let encd = as_bytes(&val).expect("encode");
+    assert_eq!(String::from_utf8_lossy(&encd), "12:hello world!");
+    assert_eq!(encd, b"12:hello world!");
+}
+
 fn round_trip_prop_eq<T : fmt::Debug + ser::Serialize + de::Deserialize + PartialEq>(val: T, verbose: bool) -> Result<bool, Error> {
   round_trip_prop(val, verbose, cmp::PartialEq::eq)
 }
@@ -140,6 +149,13 @@ fn serde_round_trip_vec_string(val: Vec<String>) -> Result<bool, Error> {
 
 #[quickcheck]
 fn serde_round_trip_vec_u64(val: Vec<u64>) -> Result<bool, Error> {
+  round_trip_prop_eq(val, false)
+}
+
+#[quickcheck]
+fn serde_round_trip_bytes(val: Vec<u8>) -> Result<bool, Error> {
+  use serde::bytes::ByteBuf;
+  let val : ByteBuf = val.into();
   round_trip_prop_eq(val, false)
 }
 
