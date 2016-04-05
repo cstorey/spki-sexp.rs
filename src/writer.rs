@@ -1,4 +1,5 @@
-use std::io::Write;
+use std::io::{Write,Cursor};
+use std::fmt;
 
 use serde::ser;
 
@@ -18,10 +19,26 @@ impl<W> Serializer<W> where W : Write {
   }
 
   fn write_bytes(&mut self, s: &[u8]) -> Result<(), Error> {
-    let pfx = format!("{}:", s.len());
-    try!(self.writer.write_all(pfx.into_bytes().as_slice()));
+    let mut pfx = [0u8; 22];
+    let off = {
+        let mut cur = Cursor::new(pfx.as_mut());
+        try!(write!(cur, "{}:", s.len()));
+        cur.position() as usize
+    };
+    try!(self.writer.write_all(&pfx[..off]));
     try!(self.writer.write_all(s));
     Ok(())
+  }
+
+  fn write_displayable<T: fmt::Display>(&mut self, v: T) -> Result<(), Error> {
+    let mut bytes = [0u8; 22];
+    let off = {
+        let mut cur = Cursor::new(bytes.as_mut());
+        try!(write!(cur, "{}", v));
+        cur.position() as usize
+    };
+
+    Ok(try!(self.write_bytes(&bytes[..off])))
   }
 
   fn open(&mut self) -> Result<(), Error> {
@@ -39,7 +56,6 @@ impl<W> Serializer<W> where W : Write {
     Ok(())
   }
 
-//
   fn serialize_bool(&mut self, val: bool) -> Result<(), Error> {
     //writeln!(std::io::stderr(), "Serializer::serialize_bool: {:?}", val).unwrap();
     if val {
@@ -51,16 +67,14 @@ impl<W> Serializer<W> where W : Write {
   }
 //   // TODO: Consider using display-hints for types of atoms.
   fn serialize_u64(&mut self, v: u64) -> Result<(), Error> {
-//     writeln!(std::io::stderr(), "Serializer::serialize_u64: {:?}", v).unwrap();
-    Ok(try!(self.write_str(&format!("{}", v))))
+      self.write_displayable(v)
   }
+
   fn serialize_i64(&mut self, v: i64) -> Result<(), Error> {
-//    writeln!(std::io::stderr(), "Serializer::serialize_i64: {:?}", v).unwrap();
-    Ok(try!(self.write_str(&format!("{}", v))))
+      self.write_displayable(v)
   }
   fn serialize_f64(&mut self, v: f64) -> Result<(), Error> {
-//    writeln!(std::io::stderr(), "Serializer::serialize_f64: {:?}", v).unwrap();
-    Ok(try!(self.write_str(&format!("{}", v))))
+      self.write_displayable(v)
   }
   fn serialize_str(&mut self, v: &str) -> Result<(), Error> {
     self.write_str(v)
