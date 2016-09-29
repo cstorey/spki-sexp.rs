@@ -15,7 +15,11 @@ pub struct Packetiser {
 
 impl Packetiser {
     pub fn new() -> Packetiser {
-        Packetiser { tok: Tokeniser::new(), buf: VecDeque::new(), parens_open: 0 }
+        Packetiser {
+            tok: Tokeniser::new(),
+            buf: VecDeque::new(),
+            parens_open: 0,
+        }
     }
     pub fn feed(&mut self, buf: &[u8]) {
         self.tok.feed(buf);

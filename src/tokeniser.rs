@@ -23,27 +23,29 @@ quick_error! {
 
 
 
-pub fn encode<'a, I>(it : I) -> Vec<u8> where I : Iterator<Item=&'a SexpToken> {
-  let mut out = vec![];
-  for t in it {
-    match t {
-      &SexpToken::OpenParen => out.push('(' as u8),
-      &SexpToken::CloseParen => out.push(')' as u8),
-      &SexpToken::Atom(ref bytes) => {
-        out.extend(format!("{}", bytes.len()).into_bytes().as_slice());
-        out.push(':' as u8);
-        out.extend(bytes.as_slice())
-      }
+pub fn encode<'a, I>(it: I) -> Vec<u8>
+    where I: Iterator<Item = &'a SexpToken>
+{
+    let mut out = vec![];
+    for t in it {
+        match t {
+            &SexpToken::OpenParen => out.push('(' as u8),
+            &SexpToken::CloseParen => out.push(')' as u8),
+            &SexpToken::Atom(ref bytes) => {
+                out.extend(format!("{}", bytes.len()).into_bytes().as_slice());
+                out.push(':' as u8);
+                out.extend(bytes.as_slice())
+            }
+        }
     }
-  }
-  out
+    out
 }
 
-const OPEN_PAREN : u8 = '(' as u8;
-const CLOSE_PAREN : u8 = ')' as u8;
-const COLON : u8 = ':' as u8;
-const ZERO : u8 = '0' as u8;
-const NINE : u8 = '9' as u8;
+const OPEN_PAREN: u8 = '(' as u8;
+const CLOSE_PAREN: u8 = ')' as u8;
+const COLON: u8 = ':' as u8;
+const ZERO: u8 = '0' as u8;
+const NINE: u8 = '9' as u8;
 
 
 #[derive(Debug)]
@@ -55,13 +57,16 @@ enum TokState {
 
 #[derive(Debug)]
 pub struct Tokeniser {
-    inbuf : VecDeque<u8>,
+    inbuf: VecDeque<u8>,
     state: TokState,
 }
 
 impl Tokeniser {
     pub fn new() -> Tokeniser {
-        Tokeniser { inbuf: VecDeque::new(), state: TokState::Start }
+        Tokeniser {
+            inbuf: VecDeque::new(),
+            state: TokState::Start,
+        }
     }
 
     pub fn feed(&mut self, buf: &[u8]) {
@@ -72,26 +77,31 @@ impl Tokeniser {
         // writeln!(::std::io::stderr(),"Pre-start: {:?}", self);
         while let TokState::Start = self.state {
             match self.inbuf.pop_front() {
-              Some(c) if c == OPEN_PAREN => return Ok(Some(SexpToken::OpenParen))
-            , Some(c) if c == CLOSE_PAREN => return Ok(Some(SexpToken::CloseParen))
-            , Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen((c - ZERO) as usize); }
-            , None => return Ok(None)
-            , Some(other) => return Err(TokenError::BadChar(other))
+                Some(c) if c == OPEN_PAREN => return Ok(Some(SexpToken::OpenParen)),
+                Some(c) if c == CLOSE_PAREN => return Ok(Some(SexpToken::CloseParen)),
+                Some(c) if c >= ZERO && c <= NINE => {
+                    self.state = TokState::ReadingLen((c - ZERO) as usize);
+                }
+                None => return Ok(None),
+                Some(other) => return Err(TokenError::BadChar(other)),
             };
         }
         // writeln!(::std::io::stderr(),"Post-start: {:?}", self);
 
         while let TokState::ReadingLen(n) = self.state {
             match self.inbuf.pop_front() {
-              Some(c) if c >= ZERO && c <= NINE => { self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize); }
-            , Some(c) if c == COLON => { self.state = TokState::ReadingAtomBody(n, Vec::new()) }
-            , Some(other) => return Err(TokenError::BadChar(other))
-            , None => return Ok(None)
+                Some(c) if c >= ZERO && c <= NINE => {
+                    self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize);
+                }
+                Some(c) if c == COLON => self.state = TokState::ReadingAtomBody(n, Vec::new()),
+                Some(other) => return Err(TokenError::BadChar(other)),
+                None => return Ok(None),
             };
         }
         // writeln!(::std::io::stderr(),"Post-len: {:?}", self);
 
-        if let TokState::ReadingAtomBody(len, mut buf) = mem::replace(&mut self.state, TokState::Start) {
+        if let TokState::ReadingAtomBody(len, mut buf) = mem::replace(&mut self.state,
+                                                                      TokState::Start) {
             // let remaining = ...
             let remaining = cmp::min(self.inbuf.len(), len - buf.len());
             buf.extend(self.inbuf.drain(..remaining));
@@ -110,14 +120,22 @@ impl Tokeniser {
     }
 }
 
-const BUF_SIZE : usize = 4096;
-pub struct TokenisingIterator<I, E> where I : Iterator<Item=Result<u8, E>>, E: Into<TokenError> {
+const BUF_SIZE: usize = 4096;
+pub struct TokenisingIterator<I, E>
+    where I: Iterator<Item = Result<u8, E>>,
+          E: Into<TokenError>
+{
     iter: I,
     toks: Tokeniser,
 }
 
-pub fn tokenise<I:Iterator<Item=Result<u8, E>>, E: Into<TokenError>>(it : I) -> TokenisingIterator<I, E> {
-  TokenisingIterator { iter: it, toks: Tokeniser::new() }
+pub fn tokenise<I: Iterator<Item = Result<u8, E>>, E: Into<TokenError>>
+    (it: I)
+     -> TokenisingIterator<I, E> {
+    TokenisingIterator {
+        iter: it,
+        toks: Tokeniser::new(),
+    }
 }
 
 impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for TokenisingIterator<I, E> {
@@ -138,5 +156,3 @@ impl<'a, I: Iterator<Item=Result<u8, E>>, E: Into<TokenError>> Iterator for Toke
         }
     }
 }
-
-
