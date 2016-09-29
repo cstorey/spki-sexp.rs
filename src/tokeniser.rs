@@ -5,16 +5,15 @@ use std::mem;
 use std::cmp;
 use super::SexpToken;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum TokenError {
-        /// IO Error
-        Io(err: io::Error) {
-            from()
-            cause(err)
-            description(err.description())
-        }
-        /// Arbitrary system error
+error_chain! {
+    types {
+        TokenError, ErrorKind, ChainErr, TokenResult;
+    }
+
+    foreign_links {
+        io::Error, Io;
+    }
+    errors {
         BadChar(char: u8) {
             description("Invalid character")
         }
@@ -83,7 +82,7 @@ impl Tokeniser {
                     self.state = TokState::ReadingLen((c - ZERO) as usize);
                 }
                 None => return Ok(None),
-                Some(other) => return Err(TokenError::BadChar(other)),
+                Some(other) => return Err(ErrorKind::BadChar(other).into()),
             };
         }
         // writeln!(::std::io::stderr(),"Post-start: {:?}", self);
@@ -94,7 +93,7 @@ impl Tokeniser {
                     self.state = TokState::ReadingLen(n * 10 + (c - ZERO) as usize);
                 }
                 Some(c) if c == COLON => self.state = TokState::ReadingAtomBody(n, Vec::new()),
-                Some(other) => return Err(TokenError::BadChar(other)),
+                Some(other) => return Err(ErrorKind::BadChar(other).into()),
                 None => return Ok(None),
             };
         }

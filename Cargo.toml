@@ -4,10 +4,12 @@ name = "spki-sexp"
 version = "0.0.1"
 
 [dependencies]
+error-chain = "0.5.0"
+log = "*"
 quick-error = "1.0.0"
-serde = "0.7.0"
+serde = "0.8.0"
 
 [dev-dependencies]
 quickcheck = "0.2.25"
 quickcheck_macros = "0.2.26"
-serde_macros = "0.7.0"
+serde_macros = "0.8.0"

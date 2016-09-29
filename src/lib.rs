@@ -1,29 +1,33 @@
+#[macro_use]
+extern crate error_chain;
+
 extern crate core;
 extern crate serde;
+#[macro_use]
+extern crate log;
 
 #[macro_use]
 extern crate quick_error;
 
 use serde::{ser, de};
 
-use std::io::{self, Write};
+use std::io::{self};
 use std::iter::Iterator;
-use std::{error, fmt};
+use std::{error};
 
+mod errors;
 mod writer;
 mod reader;
 mod tokeniser;
 mod packetiser;
+
+pub use errors::*;
 
 pub use writer::Serializer;
 pub use reader::Reader;
 
 pub use tokeniser::{encode, tokenise, TokenError, Tokeniser};
 pub use packetiser::Packetiser;
-
-fn okay<X>(val: X) -> Result<X, TokenError> {
-    Ok(val)
-}
 
 #[derive(PartialEq, Eq,Debug, Clone)]
 pub enum SexpToken {
@@ -32,114 +36,42 @@ pub enum SexpToken {
     Atom(Vec<u8>),
 }
 
-#[derive(Debug)]
-pub enum Error {
-    SyntaxError(String),
-    UnexpectedTokenError(SexpToken, Vec<SexpToken>),
-    BadTokenError(TokenError),
-    EofError,
-    IoError(io::Error),
-    InvalidInt(std::num::ParseIntError),
-    InvalidFloat(core::num::ParseFloatError),
-    InvalidBool(std::str::ParseBoolError),
-    UnknownField(String),
-    MissingField(String),
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::SyntaxError(_) => "Syntax error",
-            Error::UnexpectedTokenError(_, _) => "Unexpected Token",
-            Error::BadTokenError(ref e) => error::Error::description(e),
-            Error::EofError => "EOF",
-            Error::IoError(ref e) => error::Error::description(e),
-            Error::InvalidInt(ref e) => error::Error::description(e),
-            Error::InvalidFloat(ref e) => error::Error::description(e),
-            Error::InvalidBool(ref e) => error::Error::description(e),
-            Error::UnknownField(_) => "unknown field",
-            Error::MissingField(_) => "missing field",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
 impl ser::Error for Error {
     fn custom<T: Into<String>>(msg: T) -> Self {
-        Error::SyntaxError(msg.into())
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "It broke. Sorry")
+        ErrorKind::SyntaxError(msg.into()).into()
     }
 }
 
 impl de::Error for Error {
     fn custom<T: Into<String>>(msg: T) -> Self {
-        Error::SyntaxError(msg.into())
+        ErrorKind::SyntaxError(msg.into()).into()
     }
 
     fn end_of_stream() -> Error {
         //    writeln!(std::io::stderr(), "Error::end_of_stream_error");
-        Error::EofError
+        ErrorKind::EofError.into()
     }
 
     fn unknown_field(field: &str) -> Error {
-        Error::UnknownField(field.to_string())
+        ErrorKind::UnknownField(field.to_string()).into()
     }
 
     fn missing_field(field: &'static str) -> Error {
-        Error::MissingField(field.to_string())
+        ErrorKind::MissingField(field.to_string()).into()
     }
 }
 
-impl From<io::Error> for Error {
-    fn from(error: io::Error) -> Error {
-        Error::IoError(error)
-    }
-}
-
-impl From<TokenError> for Error {
-    fn from(error: TokenError) -> Error {
-        Error::BadTokenError(error)
-    }
-}
-
-impl From<std::num::ParseIntError> for Error {
-    fn from(error: std::num::ParseIntError) -> Error {
-        Error::InvalidInt(error)
-    }
-}
-
-impl From<std::str::ParseBoolError> for Error {
-    fn from(error: std::str::ParseBoolError) -> Error {
-        Error::InvalidBool(error)
-    }
-}
-
-// http://stackoverflow.com/questions/29830005/try-macro-stopped-working-after-rust-upgrade
-impl From<core::num::ParseFloatError> for Error {
-    fn from(error: core::num::ParseFloatError) -> Error {
-        Error::InvalidFloat(error)
-    }
-}
-
-pub fn from_bytes<T>(value: &[u8]) -> Result<T, Error>
+pub fn from_bytes<T>(value: &[u8]) -> Result<T>
     where T: de::Deserialize
 {
-    let mut de = Reader::new(value.iter().cloned().map(okay));
+    let mut de = Reader::new(value.iter().cloned().map(|v| Ok(v).map_err(|e: TokenError| e)));
     let value = try!(de::Deserialize::deserialize(&mut de));
     // Make sure the whole stream has been consumed.
     try!(de.end());
     Ok(value)
 }
 
-pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T, Error>
+pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T>
     where T: de::Deserialize
 {
     let mut de = Reader::new(rdr.bytes());
@@ -149,7 +81,7 @@ pub fn from_reader<T, R: io::Read>(rdr: R) -> Result<T, Error>
     Ok(value)
 }
 
-pub fn as_bytes<T>(value: &T) -> Result<Vec<u8>, Error>
+pub fn as_bytes<T>(value: &T) -> Result<Vec<u8>>
     where T: ser::Serialize
 {
     let mut out = Vec::new();
@@ -157,7 +89,7 @@ pub fn as_bytes<T>(value: &T) -> Result<Vec<u8>, Error>
     Ok(out)
 }
 
-pub fn to_writer<T, W: io::Write>(out: W, value: &T) -> Result<(), Error>
+pub fn to_writer<T, W: io::Write>(out: W, value: &T) -> Result<()>
     where T: ser::Serialize
 {
     let mut ser = Serializer::new(out);
