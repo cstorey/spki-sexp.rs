@@ -11,9 +11,9 @@ extern crate quick_error;
 
 use serde::{ser, de};
 
-use std::io::{self};
+use std::io;
 use std::iter::Iterator;
-use std::{error};
+use std::error;
 
 mod errors;
 mod writer;

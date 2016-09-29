@@ -126,7 +126,7 @@ impl<W> ser::Serializer for Serializer<W>
         self.close()
     }
     fn serialize_seq(&mut self, _len: Option<usize>) -> Result<Self::SeqState, Self::Error> {
-        writeln!(::std::io::stderr(), "Serializer::serialize_seq").unwrap();
+        trace!("Serializer::serialize_seq");
         try!(self.open());
         Ok(())
     }
@@ -134,7 +134,7 @@ impl<W> ser::Serializer for Serializer<W>
         self.serialize_seq(Some(len))
     }
     //   fn serialize_named_seq<V>(&mut self, name: &'static str, mut visitor: V) -> Result<(), Error> where V: ser::SeqVisitor {
-    //     // writeln!(::std::io::stderr(), "Serializer::serialize_named_seq:{}", name).unwrap();
+    //     // trace!("Serializer::serialize_named_seq:{}", name);
     //     try!(self.open());
     //     try!(self.write_str(name));
     //     while let Some(()) = try!(visitor.visit(self)) {}
@@ -142,7 +142,7 @@ impl<W> ser::Serializer for Serializer<W>
     //   }
     //
     fn serialize_seq_elt<V: ser::Serialize>(&mut self, _: &mut (), value: V) -> Result<(), Error> {
-        writeln!(::std::io::stderr(), "Serializer::serialize_seq_elt").unwrap();
+        trace!("Serializer::serialize_seq_elt");
         value.serialize(self)
     }
     fn serialize_seq_end(&mut self, _: ()) -> Result<(), Error> {
@@ -152,11 +152,11 @@ impl<W> ser::Serializer for Serializer<W>
 
     fn serialize_map(&mut self, _len: Option<usize>) -> Result<(), Error> {
         try!(self.open());
-        self.close()
+        Ok(())
     }
 
     fn serialize_map_key<K: ser::Serialize>(&mut self, _: &mut (), key: K) -> Result<(), Error> {
-        writeln!(::std::io::stderr(), "Serializer::serialize_map_key").unwrap();
+        trace!("Serializer::serialize_map_key");
         try!(key.serialize(self));
         Ok(())
     }
@@ -165,7 +165,7 @@ impl<W> ser::Serializer for Serializer<W>
                                               _: &mut (),
                                               value: V)
                                               -> Result<(), Error> {
-        writeln!(::std::io::stderr(), "Serializer::serialize_map_value").unwrap();
+        trace!("Serializer::serialize_map_value");
         try!(value.serialize(self));
         Ok(())
     }
@@ -185,7 +185,6 @@ impl<W> ser::Serializer for Serializer<W>
     }
     fn serialize_tuple_struct(&mut self, name: &str, len: usize) -> Result<(), Error> {
         try!(self.serialize_tuple(len));
-        try!(self.write_str(name));
         Ok(())
     }
     fn serialize_tuple_struct_elt<V: ser::Serialize>(&mut self,
@@ -217,7 +216,7 @@ impl<W> ser::Serializer for Serializer<W>
                                                     variant: &'static str,
                                                     value: T)
                                                     -> Result<(), Error> {
-        trace!("Serializer::serialize_named_unit:{:?}", _name);
+        trace!("Serializer::serialize_newtype_variant:{:?}/{:?}", _name, variant);
         try!(self.open());
         try!(self.write_str(variant));
         try!(value.serialize(self));
@@ -231,7 +230,7 @@ impl<W> ser::Serializer for Serializer<W>
                                variant: &'static str,
                                _len: usize)
                                -> Result<(), Error> {
-        trace!("Serializer::serialize_named_unit:{:?}/{:?}", _name, variant);
+        trace!("Serializer::serialize_tuple_variant:{:?}/{:?}", _name, variant);
         try!(self.open());
         try!(self.write_str(variant));
         Ok(())
@@ -241,11 +240,13 @@ impl<W> ser::Serializer for Serializer<W>
                                                       _: &mut (),
                                                       value: V)
                                                       -> Result<(), Error> {
+        trace!("Serializer::serialize_tuple_variant_elt");
         value.serialize(self)
     }
 
     fn serialize_tuple_variant_end(&mut self, _: ()) -> Result<(), Error> {
-        try!(self.open());
+        trace!("Serializer::serialize_tuple_variant_end");
+        try!(self.close());
         Ok(())
     }
 
@@ -253,23 +254,29 @@ impl<W> ser::Serializer for Serializer<W>
                                                    _name: &'static str,
                                                    v: V)
                                                    -> Result<(), Error> {
+        trace!("Serializer::serialize_newtype_struct: {:?}", _name);
         v.serialize(self)
     }
 
     fn serialize_struct(&mut self, _name: &'static str, _len: usize) -> Result<(), Error> {
+        trace!("Serializer::serialize_struct: {:?}/{:?}", _name, _len);
         try!(self.open());
         Ok(())
     }
 
     fn serialize_struct_elt<V: ser::Serialize>(&mut self,
                                                _: &mut (),
-                                               _key: &'static str,
+                                               key: &'static str,
                                                value: V)
                                                -> Result<(), Error> {
-        value.serialize(self)
+        trace!("Serializer::serialize_struct_elt: {:?}", key);
+        try!(self.write_str(key));
+        try!(value.serialize(self));
+        Ok(())
     }
 
     fn serialize_struct_end(&mut self, _: ()) -> Result<(), Error> {
+        trace!("Serializer::serialize_struct_end");
         try!(self.close());
         Ok(())
     }
@@ -281,6 +288,7 @@ impl<W> ser::Serializer for Serializer<W>
                                 variant: &'static str,
                                 _len: usize)
                                 -> Result<(), Error> {
+        trace!("Serializer::serialize_struct_variant: {:?}/{:?}/{:?}", _name, variant, _len);
         try!(self.open());
         try!(self.write_str(variant));
         Ok(())
@@ -290,9 +298,11 @@ impl<W> ser::Serializer for Serializer<W>
                                                        _key: &'static str,
                                                        value: V)
                                                        -> Result<(), Error> {
+        trace!("Serializer::serialize_struct_variant_elt: {:?}", _key);
         self.serialize_struct_elt(_st, _key, value)
     }
     fn serialize_struct_variant_end(&mut self, _: ()) -> Result<(), Error> {
+        trace!("Serializer::serialize_struct_variant_end");
         self.serialize_struct_end(())
     }
 }

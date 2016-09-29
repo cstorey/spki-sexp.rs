@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::mem;
 use serde::de;
 
-use super::{SexpToken,Error};
+use super::{SexpToken, Error};
 use reader::Reader;
 use tokeniser::Tokeniser;
 
@@ -37,7 +37,7 @@ impl Packetiser {
             if self.parens_open == 0 {
                 let packet = mem::replace(&mut self.buf, VecDeque::new());
                 let mut de = Reader::of_tokens(packet.into_iter()
-                        .map(|v| Ok(v).map_err(|e: Error| e)));
+                    .map(|v| Ok(v).map_err(|e: Error| e)));
                 let value = try!(de::Deserialize::deserialize(&mut de));
                 try!(de.end());
                 return Ok(Some(value));

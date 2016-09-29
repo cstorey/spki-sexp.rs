@@ -116,11 +116,33 @@ impl<I, E: ::std::error::Error> Reader<I, E>
             None => Err(ErrorKind::EofError.into()),
         }
     }
+    fn expect_open(&mut self) -> Result<(), Error> {
+        match self.iter.next() {
+            Some(Ok(SexpToken::OpenParen)) => Ok(()),
+            Some(other) => {
+                return Err(ErrorKind::UnexpectedTokenError(try!(other),
+                            vec![SexpToken::CloseParen])
+                        .into())
+            }
+            None => return Err(ErrorKind::EofError.into()),
+        }
+    }
+    fn expect_close(&mut self) -> Result<(), Error> {
+        match self.iter.next() {
+            Some(Ok(SexpToken::CloseParen)) => Ok(()),
+            Some(other) => {
+                return Err(ErrorKind::UnexpectedTokenError(try!(other),
+                            vec![SexpToken::CloseParen])
+                        .into())
+            }
+            None => return Err(ErrorKind::EofError.into()),
+        }
+    }
 }
 
 fn parse_and_visit_with<V: FromStr, R, F: FnMut(V) -> Result<R, Error>>(s: &[u8],
-                                                                     mut f: F)
-                                                                     -> Result<R, Error>
+                                                                        mut f: F)
+                                                                        -> Result<R, Error>
     where V::Err: Into<Error>
 {
     match String::from_utf8_lossy(s).parse() {
@@ -134,6 +156,7 @@ macro_rules! impl_parseable_atom {
         fn $dser_method<V: de::Visitor>(&mut self,
                 mut visitor: V)
             -> Result<V::Value, Self::Error> {
+                trace!("Deserializer::{}: peek: {:?}", stringify!($dser_method), self.iter.peek());
                 self.read_atom_scalar(move |s| parse_and_visit_with(s, move |val| visitor.$visitor_method(val)))
             }
     }
@@ -153,6 +176,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     fn deserialize_unit<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_unit: peek: {:?}", self.iter.peek());
         visitor.visit_unit()
     }
 
@@ -160,17 +184,20 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                                                _name: &str,
                                                mut visitor: V)
                                                -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_unit_struct: peek: {:?}", self.iter.peek());
         self.deserialize_unit(visitor)
     }
 
     fn deserialize_string<V: de::Visitor>(&mut self,
                                           mut visitor: V)
                                           -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_string: peek: {:?}", self.iter.peek());
         self.deserialize_str(visitor)
     }
     fn deserialize_str<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_str: peek: {:?}", self.iter.peek());
         match self.iter.next() {
             Some(Ok(SexpToken::Atom(ref s))) => visitor.visit_bytes(s),
             Some(other) => {
@@ -187,6 +214,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     fn deserialize_bytes<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_bytes: peek: {:?}", self.iter.peek());
         match self.iter.next() {
             Some(Ok(SexpToken::Atom(ref s))) => visitor.visit_bytes(s),
             Some(other) => {
@@ -222,11 +250,12 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     fn deserialize_char<V>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_char: peek: {:?}", self.iter.peek());
         self.read_atom_scalar(|bs| {
             let s = try!(String::from_utf8(bs.to_vec()));
             let mut cs = s.chars();
             let c = try!(cs.next().ok_or_else(|| {
-                let e : Error = ErrorKind::BadChar(bs.to_vec()).into();
+                let e: Error = ErrorKind::BadChar(bs.to_vec()).into();
                 e
             }));
             if let Some(_) = cs.next() {
@@ -243,13 +272,14 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     fn deserialize_option<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_option: peek: {:?}", self.iter.peek());
         self.parse_option(visitor)
     }
 
     fn deserialize_seq<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
-        trace!("Reader::deserialize_seq");
+        trace!("Deserializer::deserialize_seq: peek: {:?}", self.iter.peek());
         match self.iter.next() {
             Some(Ok(SexpToken::OpenParen)) => self.parse_list(visitor),
             Some(other) => {
@@ -263,6 +293,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                                                   _len: usize,
                                                   visitor: V)
                                                   -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_seq_fixed_size: peek: {:?}", self.iter.peek());
         self.deserialize_seq(visitor)
     }
 
@@ -270,7 +301,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
         where V: de::Visitor
     {
 
-        trace!("Reader::deserialize_map");
+        trace!("Deserializer::deserialize_map: peek: {:?}", self.iter.peek());
         match self.iter.next() {
             Some(Ok(SexpToken::OpenParen)) => self.parse_map(visitor),
             Some(other) => {
@@ -288,12 +319,14 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                              -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_struct {:?}: {:?}; peek: {:?}", _name, _fields, self.iter.peek());
         self.deserialize_map(visitor)
     }
 
     fn deserialize_struct_field<V>(&mut self, visitor: V) -> Result<V::Value, Self::Error>
         where V: de::Visitor
     {
+        trace!("Deserializer::deserialize_struct_field (start): peek: {:?}", self.iter.peek());
         self.deserialize_string(visitor)
     }
 
@@ -301,6 +334,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                                                   _name: &'static str,
                                                   visitor: V)
                                                   -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_newtype_struct: peek: {:?}", self.iter.peek());
         self.deserialize_struct(_name, &[], visitor)
     }
 
@@ -312,6 +346,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                            -> Result<V::Value, Self::Error>
         where V: de::EnumVisitor
     {
+        trace!("Deserializer::deserialize_enum: peek: {:?}", self.iter.peek());
         visitor.visit(self)
     }
 
@@ -320,18 +355,21 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
                                                 len: usize,
                                                 visitor: V)
                                                 -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_tuple_struct: peek: {:?}", self.iter.peek());
         self.deserialize_tuple(len, visitor)
     }
     fn deserialize_tuple<V: de::Visitor>(&mut self,
                                          len: usize,
                                          visitor: V)
                                          -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_tuple: peek: {:?}", self.iter.peek());
         self.deserialize_seq_fixed_size(len, visitor)
     }
 
     fn deserialize_ignored_any<V: de::Visitor>(&mut self,
                                                visitor: V)
                                                -> Result<V::Value, Self::Error> {
+        trace!("Deserializer::deserialize_ignored_any: peek: {:?}", self.iter.peek());
         let message = "deserialize_ignored_any not supported";
         Err(message.into())
 
@@ -345,7 +383,7 @@ impl<'a, I, E: error::Error> de::VariantVisitor for Reader<I, E>
     type Error = Error;
     fn visit_variant<V: de::Deserialize>(&mut self) -> Result<V, Self::Error> {
 
-        trace!("EnumParser::deserialize_variant: peek: {:?}",
+        trace!("EnumParser::visit_variant (start): peek: {:?}",
                self.iter.peek());
 
         match self.iter.next() {
@@ -356,16 +394,18 @@ impl<'a, I, E: error::Error> de::VariantVisitor for Reader<I, E>
             }
             None => return Err(ErrorKind::EofError.into()),
         };
+        trace!("EnumParser::visit_variant (value): peek: {:?}", self.iter.peek());
 
         let val = try!(de::Deserialize::deserialize(self));
 
+        trace!("EnumParser::visit_variant (end): peek: {:?}", self.iter.peek());
 
         Ok(val)
     }
 
     fn visit_unit(&mut self) -> Result<(), Self::Error> {
 
-        trace!("EnumParser::deserialize_unit: peek: {:?}", self.iter.peek());
+        trace!("EnumParser::visit_unit: peek: {:?}", self.iter.peek());
         let val = try!(de::Deserialize::deserialize(self));
 
         match self.iter.next() {
@@ -406,7 +446,12 @@ impl<'a, I, E: error::Error> de::VariantVisitor for Reader<I, E>
     }
 
     fn visit_newtype<T: de::Deserialize>(&mut self) -> Result<T, Self::Error> {
-        de::Deserialize::deserialize(self)
+        trace!("VariantVisitor::visit_newtype: peek: {:?}", self.iter.peek());
+        let val = try!(de::Deserialize::deserialize(self));
+
+        try!(self.expect_close());
+
+        Ok(val)
     }
 }
 
@@ -510,7 +555,8 @@ impl<'a, I, E: error::Error> de::MapVisitor for MapParser<'a, I, E>
                                                            vec![SexpToken::Atom("Any value, \
                                                                                  honest"
                                                                     .as_bytes()
-                                                                    .to_vec())]).into())
+                                                                    .to_vec())])
+                    .into())
             }
             None => return Err(ErrorKind::EofError.into()),
             _ => (),
