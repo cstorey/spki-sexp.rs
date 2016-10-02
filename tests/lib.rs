@@ -408,3 +408,39 @@ fn serde_round_trip_incremental_framing(items: Vec<SomeEnum>, chunks: Vec<u16>) 
     Ok(outputs == items)
 }
 }
+
+quickcheck! {
+    fn serde_round_trip_incremental_framing_atom(items: Vec<usize>, chunks: Vec<u16>) -> Result<bool> {
+        // writeln!(std::io::stderr(),"orig: {:?}", items).unwrap();
+        let mut buf = Vec::new();
+        for it in items.iter() {
+            to_writer(&mut buf, it).expect("to_writer");
+        }
+
+        writeln!(std::io::stderr(),"Encoded: {:?}", vec8_as_str(&buf)).unwrap();
+
+        let mut packets = Packetiser::new();
+        let mut outputs : Vec<usize> = Vec::new();
+
+        let offs = vec![0].into_iter().chain(chunks.into_iter())
+            .scan(0usize, |a, n| { *a += n as usize; Some (*a)} )
+            .take_while(|&n| n < buf.len())
+            .chain(vec![buf.len()].into_iter())
+            .collect::<Vec<usize>>();
+
+        // writeln!(std::io::stderr(),"Offsets: {:?}", offs);
+        for (&start, &end) in offs.iter().zip(offs.iter().skip(1)) {
+            packets.feed(&buf[start..end]);
+            // writeln!(std::io::stderr(),"Feed: {:?}, {:?}", start..end, vec8_as_str(&buf[start..end])).unwrap();
+
+            while let Some(it) = try!(packets.take()) {
+                // writeln!(std::io::stderr(),"Took: {:?}", it);
+                outputs.push(it);
+            }
+        }
+
+        // writeln!(std::io::stderr(),"Result: {:?}: {:?}", outputs == toks, outputs).unwrap();
+
+        Ok(outputs == items)
+    }
+}
