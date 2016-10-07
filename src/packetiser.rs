@@ -36,6 +36,7 @@ impl Packetiser {
             // writeln!(::std::io::stderr(),"state: {:?}", self);
             if self.parens_open == 0 {
                 let packet = mem::replace(&mut self.buf, VecDeque::new());
+                trace!("Found packet:{:?}", packet);
                 let mut de = Reader::of_tokens(packet.into_iter()
                     .map(|v| Ok(v).map_err(|e: Error| e)));
                 let value = try!(de::Deserialize::deserialize(&mut de));
