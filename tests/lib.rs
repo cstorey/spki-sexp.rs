@@ -249,6 +249,20 @@ fn serde_round_trip_unity_struct(val: MyUnityType) -> Result<bool> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct MyNewtype(usize);
+impl quickcheck::Arbitrary for MyNewtype {
+    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> MyNewtype {
+        MyNewtype(usize::arbitrary(g))
+    }
+}
+
+quickcheck! {
+fn serde_round_trip_newtype_struct(val: MyNewtype) -> Result<bool> {
+  round_trip_prop_eq(val, false)
+}
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct StructTuple(i32, i32);
 
 impl quickcheck::Arbitrary for StructTuple {
@@ -301,7 +315,9 @@ enum SomeEnum {
     Foo,
     Quux,
     Bar(u64),
-    Baz { some: i32 },
+    Baz {
+        some: i32,
+    },
 }
 
 impl quickcheck::Arbitrary for SomeEnum {
@@ -316,18 +332,18 @@ impl quickcheck::Arbitrary for SomeEnum {
     }
 
     fn shrink(&self) -> Box<Iterator<Item = SomeEnum> + 'static> {
-        //    writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
+        // writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
         match *self {
             SomeEnum::Foo => quickcheck::empty_shrinker(),
             SomeEnum::Quux => quickcheck::single_shrinker(SomeEnum::Foo),
             SomeEnum::Bar(ref x) => {
                 let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-                    .chain(x.shrink().map(SomeEnum::Bar));
+                                  .chain(x.shrink().map(SomeEnum::Bar));
                 Box::new(chained)
             }
             SomeEnum::Baz { some: x } => {
                 let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-                    .chain(x.shrink().map(|n| SomeEnum::Baz { some: n }));
+                                  .chain(x.shrink().map(|n| SomeEnum::Baz { some: n }));
                 Box::new(chained)
             }
         }

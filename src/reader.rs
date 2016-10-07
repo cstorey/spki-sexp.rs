@@ -346,11 +346,11 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
 
     fn deserialize_newtype_struct<V: de::Visitor>(&mut self,
                                                   _name: &'static str,
-                                                  visitor: V)
+                                                  mut visitor: V)
                                                   -> Result<V::Value, Self::Error> {
         trace!("Deserializer::deserialize_newtype_struct: peek: {:?}",
                self.iter.peek());
-        self.deserialize_struct(_name, &[], visitor)
+        visitor.visit_newtype_struct(self)
     }
 
 
