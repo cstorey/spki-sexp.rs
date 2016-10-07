@@ -216,7 +216,9 @@ impl<W> ser::Serializer for Serializer<W>
                                                     variant: &'static str,
                                                     value: T)
                                                     -> Result<(), Error> {
-        trace!("Serializer::serialize_newtype_variant:{:?}/{:?}", _name, variant);
+        trace!("Serializer::serialize_newtype_variant:{:?}/{:?}",
+               _name,
+               variant);
         try!(self.open());
         try!(self.write_str(variant));
         try!(value.serialize(self));
@@ -230,7 +232,9 @@ impl<W> ser::Serializer for Serializer<W>
                                variant: &'static str,
                                _len: usize)
                                -> Result<(), Error> {
-        trace!("Serializer::serialize_tuple_variant:{:?}/{:?}", _name, variant);
+        trace!("Serializer::serialize_tuple_variant:{:?}/{:?}",
+               _name,
+               variant);
         try!(self.open());
         try!(self.write_str(variant));
         Ok(())
@@ -288,7 +292,10 @@ impl<W> ser::Serializer for Serializer<W>
                                 variant: &'static str,
                                 _len: usize)
                                 -> Result<(), Error> {
-        trace!("Serializer::serialize_struct_variant: {:?}/{:?}/{:?}", _name, variant, _len);
+        trace!("Serializer::serialize_struct_variant: {:?}/{:?}/{:?}",
+               _name,
+               variant,
+               _len);
         try!(self.open());
         try!(self.write_str(variant));
         Ok(())
