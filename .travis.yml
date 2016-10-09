@@ -28,5 +28,4 @@ env:
 
 matrix:
     allow_failures:
-        - rust: stable
-        - rust: beta
+        - rust: nightly
