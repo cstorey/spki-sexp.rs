@@ -183,7 +183,7 @@ impl<W> ser::Serializer for Serializer<W>
     fn serialize_tuple_end(&mut self, st: ()) -> Result<(), Error> {
         self.serialize_seq_end(st)
     }
-    fn serialize_tuple_struct(&mut self, name: &str, len: usize) -> Result<(), Error> {
+    fn serialize_tuple_struct(&mut self, _name: &str, len: usize) -> Result<(), Error> {
         try!(self.serialize_tuple(len));
         Ok(())
     }

@@ -3,7 +3,6 @@ use std::convert::From;
 use std::str::FromStr;
 use std::error;
 use serde::de;
-use serde::de::Deserializer;
 
 use super::{Error, ErrorKind, SexpToken};
 use tokeniser::{TokenisingIterator, TokenError, tokenise};
@@ -170,7 +169,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
 {
     type Error = Error;
 
-    fn deserialize<V: de::Visitor>(&mut self, mut visitor: V) -> Result<V::Value, Self::Error> {
+    fn deserialize<V: de::Visitor>(&mut self, _visitor: V) -> Result<V::Value, Self::Error> {
         let message = "deserialize not supported";
         Err(message.into())
     }
@@ -185,16 +184,14 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
 
     fn deserialize_unit_struct<V: de::Visitor>(&mut self,
                                                _name: &str,
-                                               mut visitor: V)
+                                               visitor: V)
                                                -> Result<V::Value, Self::Error> {
         trace!("Deserializer::deserialize_unit_struct: peek: {:?}",
                self.iter.peek());
         self.deserialize_unit(visitor)
     }
 
-    fn deserialize_string<V: de::Visitor>(&mut self,
-                                          mut visitor: V)
-                                          -> Result<V::Value, Self::Error> {
+    fn deserialize_string<V: de::Visitor>(&mut self, visitor: V) -> Result<V::Value, Self::Error> {
         trace!("Deserializer::deserialize_string: peek: {:?}",
                self.iter.peek());
         self.deserialize_str(visitor)
@@ -290,13 +287,8 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     {
         trace!("Deserializer::deserialize_seq: peek: {:?}",
                self.iter.peek());
-        match self.iter.next() {
-            Some(Ok(SexpToken::OpenParen)) => self.parse_list(visitor),
-            Some(other) => {
-                Err(ErrorKind::UnexpectedTokenError(try!(other), vec![SexpToken::OpenParen]).into())
-            }
-            None => Err(ErrorKind::EofError.into()),
-        }
+        try!(self.expect_open());
+        self.parse_list(visitor)
     }
 
     fn deserialize_seq_fixed_size<V: de::Visitor>(&mut self,
@@ -314,16 +306,10 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
 
         trace!("Deserializer::deserialize_map: peek: {:?}",
                self.iter.peek());
-        match self.iter.next() {
-            Some(Ok(SexpToken::OpenParen)) => self.parse_map(visitor),
-            Some(other) => {
-                Err(ErrorKind::UnexpectedTokenError(try!(other), vec![SexpToken::OpenParen]).into())
-            }
-            None => Err(ErrorKind::EofError.into()),
-        }
-
-
+        try!(self.expect_open());
+        self.parse_map(visitor)
     }
+
     fn deserialize_struct<V>(&mut self,
                              _name: &'static str,
                              _fields: &'static [&'static str],
@@ -387,7 +373,7 @@ impl<I, E: error::Error> de::Deserializer for Reader<I, E>
     }
 
     fn deserialize_ignored_any<V: de::Visitor>(&mut self,
-                                               visitor: V)
+                                               _visitor: V)
                                                -> Result<V::Value, Self::Error> {
         trace!("Deserializer::deserialize_ignored_any: peek: {:?}",
                self.iter.peek());
@@ -407,14 +393,7 @@ impl<'a, I, E: error::Error> de::VariantVisitor for Reader<I, E>
         trace!("EnumParser::visit_variant (start): peek: {:?}",
                self.iter.peek());
 
-        match self.iter.next() {
-            Some(Ok(SexpToken::OpenParen)) => (),
-            Some(other) => {
-                return Err(ErrorKind::UnexpectedTokenError(try!(other), vec![SexpToken::OpenParen])
-                    .into())
-            }
-            None => return Err(ErrorKind::EofError.into()),
-        };
+        try!(self.expect_open());
         trace!("EnumParser::visit_variant (value): peek: {:?}",
                self.iter.peek());
 
@@ -430,16 +409,8 @@ impl<'a, I, E: error::Error> de::VariantVisitor for Reader<I, E>
 
         trace!("EnumParser::visit_unit: peek: {:?}", self.iter.peek());
         let val = try!(de::Deserialize::deserialize(self));
+        try!(self.expect_close());
 
-        match self.iter.next() {
-            Some(Ok(SexpToken::CloseParen)) => (),
-            Some(other) => {
-                return Err(ErrorKind::UnexpectedTokenError(try!(other),
-                                                           vec![SexpToken::CloseParen])
-                    .into())
-            }
-            None => return Err(ErrorKind::EofError.into()),
-        };
         Ok(val)
     }
 
@@ -513,17 +484,8 @@ impl<'a, I, E: error::Error> de::SeqVisitor for ListParser<'a, I, E>
     }
 
     fn end(&mut self) -> Result<(), Error> {
-        let cur = self.de.iter.next();
-
-        trace!("ListParser::end: got: {:?}", cur);
-        match cur {
-            Some(Ok(SexpToken::CloseParen)) => Ok(()),
-            None => Err(ErrorKind::EofError.into()),
-            Some(other) => {
-                Err(ErrorKind::UnexpectedTokenError(try!(other), vec![SexpToken::CloseParen])
-                    .into())
-            }
-        }
+        try!(self.de.expect_close());
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-use quickcheck::{self, Arbitrary};
+use quickcheck;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MyUnityType;

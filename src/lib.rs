@@ -13,7 +13,6 @@ use serde::{ser, de};
 
 use std::io;
 use std::iter::Iterator;
-use std::error;
 
 mod errors;
 mod writer;
