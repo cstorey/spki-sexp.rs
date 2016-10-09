@@ -1,6 +1,3 @@
-#![feature(plugin, custom_attribute, custom_derive)]
-#![plugin(serde_macros)]
-
 extern crate serde;
 extern crate spki_sexp;
 #[macro_use]
@@ -9,7 +6,9 @@ extern crate env_logger;
 #[macro_use]
 extern crate log;
 
-use quickcheck::Arbitrary;
+mod lib_types;
+use lib_types::*;
+
 use serde::{ser, de};
 use std::fmt;
 use std::cmp;
@@ -234,26 +233,10 @@ fn serde_round_trip_option_string(val: Option<String>) -> Result<bool> {
 }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-struct MyUnityType;
-impl quickcheck::Arbitrary for MyUnityType {
-    fn arbitrary<G: quickcheck::Gen>(_: &mut G) -> MyUnityType {
-        MyUnityType
-    }
-}
-
 quickcheck! {
 fn serde_round_trip_unity_struct(val: MyUnityType) -> Result<bool> {
   round_trip_prop_eq(val, false)
 }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-struct MyNewtype(usize);
-impl quickcheck::Arbitrary for MyNewtype {
-    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> MyNewtype {
-        MyNewtype(usize::arbitrary(g))
-    }
 }
 
 quickcheck! {
@@ -262,34 +245,10 @@ fn serde_round_trip_newtype_struct(val: MyNewtype) -> Result<bool> {
 }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-struct StructTuple(i32, i32);
-
-impl quickcheck::Arbitrary for StructTuple {
-    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> StructTuple {
-        StructTuple(i32::arbitrary(g), i32::arbitrary(g))
-    }
-}
-
 quickcheck! {
 fn serde_round_trip_struct_tuple(val: StructTuple) -> Result<bool> {
   round_trip_prop_eq(val, true)
 }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-impl quickcheck::Arbitrary for Point {
-    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Point {
-        Point {
-            x: i32::arbitrary(g),
-            y: i32::arbitrary(g),
-        }
-    }
 }
 
 quickcheck! {
@@ -308,46 +267,6 @@ quickcheck! {
 fn serde_round_trip_option_point(val: Option<Point>) -> Result<bool> {
   round_trip_prop_eq(val, false)
 }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-enum SomeEnum {
-    Foo,
-    Quux,
-    Bar(u64),
-    Baz {
-        some: i32,
-    },
-}
-
-impl quickcheck::Arbitrary for SomeEnum {
-    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> SomeEnum {
-        match u64::arbitrary(g) % 4 {
-            0 => SomeEnum::Foo,
-            1 => SomeEnum::Quux,
-            2 => SomeEnum::Bar(quickcheck::Arbitrary::arbitrary(g)),
-            3 => SomeEnum::Baz { some: quickcheck::Arbitrary::arbitrary(g) },
-            n => panic!("Unexpected value mod 4: {:?}", n),
-        }
-    }
-
-    fn shrink(&self) -> Box<Iterator<Item = SomeEnum> + 'static> {
-        // writeln!(std::io::stderr(),"shrink: {:?}", self).unwrap();
-        match *self {
-            SomeEnum::Foo => quickcheck::empty_shrinker(),
-            SomeEnum::Quux => quickcheck::single_shrinker(SomeEnum::Foo),
-            SomeEnum::Bar(ref x) => {
-                let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-                                  .chain(x.shrink().map(SomeEnum::Bar));
-                Box::new(chained)
-            }
-            SomeEnum::Baz { some: x } => {
-                let chained = quickcheck::single_shrinker(SomeEnum::Foo)
-                                  .chain(x.shrink().map(|n| SomeEnum::Baz { some: n }));
-                Box::new(chained)
-            }
-        }
-    }
 }
 
 quickcheck! {
