@@ -116,6 +116,7 @@ impl<I, E: ::std::error::Error> Reader<I, E>
             None => Err(ErrorKind::EofError.into()),
         }
     }
+
     fn expect_open(&mut self) -> Result<(), Error> {
         match self.iter.next() {
             Some(Ok(SexpToken::OpenParen)) => Ok(()),
@@ -127,6 +128,7 @@ impl<I, E: ::std::error::Error> Reader<I, E>
             None => return Err(ErrorKind::EofError.into()),
         }
     }
+
     fn expect_close(&mut self) -> Result<(), Error> {
         match self.iter.next() {
             Some(Ok(SexpToken::CloseParen)) => Ok(()),
