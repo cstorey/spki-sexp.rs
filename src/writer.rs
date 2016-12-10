@@ -3,6 +3,7 @@ use std::fmt;
 
 use serde::ser;
 use itoa;
+use dtoa;
 
 use super::Error;
 
@@ -28,6 +29,28 @@ impl<W> Serializer<W>
         Ok(())
     }
 
+    fn write_integer<T: itoa::Integer>(&mut self, v: T) -> Result<(), Error> {
+        let mut bytes = [0u8; 22];
+        let off = {
+            let mut cur = Cursor::new(bytes.as_mut());
+            try!(itoa::write(&mut cur, v));
+            cur.position() as usize
+        };
+
+        Ok(try!(self.write_bytes(&bytes[..off])))
+    }
+
+    fn write_float<T: dtoa::Floating>(&mut self, v: T) -> Result<(), Error> {
+        let mut bytes = [0u8; 22];
+        let off = {
+            let mut cur = Cursor::new(bytes.as_mut());
+            try!(dtoa::write(&mut cur, v));
+            cur.position() as usize
+        };
+
+        Ok(try!(self.write_bytes(&bytes[..off])))
+    }
+
     fn write_displayable<T: fmt::Display>(&mut self, v: T) -> Result<(), Error> {
         let mut bytes = [0u8; 22];
         let off = {
@@ -47,6 +70,21 @@ impl<W> Serializer<W>
     }
 }
 
+macro_rules! impl_integer_atom {
+    ($ty:ty, $ser_method:ident) => {
+        fn $ser_method(&mut self, v: $ty) -> Result<(), Error> {
+            self.write_integer(v)
+        }
+    }
+}
+
+macro_rules! impl_float_atom {
+    ($ty:ty, $ser_method:ident) => {
+        fn $ser_method(&mut self, v: $ty) -> Result<(), Error> {
+            self.write_float(v)
+        }
+    }
+}
 macro_rules! impl_displayable_atom {
     ($ty:ty, $ser_method:ident) => {
         fn $ser_method(&mut self, v: $ty) -> Result<(), Error> {
@@ -85,20 +123,20 @@ impl<W> ser::Serializer for Serializer<W>
         Ok(())
     }
 
-    impl_displayable_atom!(usize, serialize_usize);
-    impl_displayable_atom!(u64, serialize_u64);
-    impl_displayable_atom!(u32, serialize_u32);
-    impl_displayable_atom!(u16, serialize_u16);
-    impl_displayable_atom!(u8, serialize_u8);
+    impl_integer_atom!(usize, serialize_usize);
+    impl_integer_atom!(u64, serialize_u64);
+    impl_integer_atom!(u32, serialize_u32);
+    impl_integer_atom!(u16, serialize_u16);
+    impl_integer_atom!(u8, serialize_u8);
 
-    impl_displayable_atom!(isize, serialize_isize);
-    impl_displayable_atom!(i64, serialize_i64);
-    impl_displayable_atom!(i32, serialize_i32);
-    impl_displayable_atom!(i16, serialize_i16);
-    impl_displayable_atom!(i8, serialize_i8);
+    impl_integer_atom!(isize, serialize_isize);
+    impl_integer_atom!(i64, serialize_i64);
+    impl_integer_atom!(i32, serialize_i32);
+    impl_integer_atom!(i16, serialize_i16);
+    impl_integer_atom!(i8, serialize_i8);
 
-    impl_displayable_atom!(f64, serialize_f64);
-    impl_displayable_atom!(f32, serialize_f32);
+    impl_float_atom!(f64, serialize_f64);
+    impl_float_atom!(f32, serialize_f32);
 
     impl_displayable_atom!(char, serialize_char);
 
