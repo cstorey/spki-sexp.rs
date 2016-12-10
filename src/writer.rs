@@ -1,9 +1,9 @@
 use std::io::{Write, Cursor};
-use std::fmt;
 
 use serde::ser;
 use itoa;
 use dtoa;
+use char_utf8;
 
 use super::Error;
 
@@ -51,17 +51,6 @@ impl<W> Serializer<W>
         Ok(try!(self.write_bytes(&bytes[..off])))
     }
 
-    fn write_displayable<T: fmt::Display>(&mut self, v: T) -> Result<(), Error> {
-        let mut bytes = [0u8; 22];
-        let off = {
-            let mut cur = Cursor::new(bytes.as_mut());
-            try!(write!(cur, "{}", v));
-            cur.position() as usize
-        };
-
-        Ok(try!(self.write_bytes(&bytes[..off])))
-    }
-
     fn open(&mut self) -> Result<(), Error> {
         Ok(try!(self.writer.write_all(b"(")))
     }
@@ -82,13 +71,6 @@ macro_rules! impl_float_atom {
     ($ty:ty, $ser_method:ident) => {
         fn $ser_method(&mut self, v: $ty) -> Result<(), Error> {
             self.write_float(v)
-        }
-    }
-}
-macro_rules! impl_displayable_atom {
-    ($ty:ty, $ser_method:ident) => {
-        fn $ser_method(&mut self, v: $ty) -> Result<(), Error> {
-            self.write_displayable(v)
         }
     }
 }
@@ -138,7 +120,11 @@ impl<W> ser::Serializer for Serializer<W>
     impl_float_atom!(f64, serialize_f64);
     impl_float_atom!(f32, serialize_f32);
 
-    impl_displayable_atom!(char, serialize_char);
+    fn serialize_char(&mut self, v: char) -> Result<(), Error> {
+        let mut buf = [0u8; 4];
+        let nbytes = char_utf8::encode_utf8(v, &mut buf).expect("encode_utf8");
+        self.write_bytes(&buf[..nbytes])
+    }
 
     fn serialize_str(&mut self, v: &str) -> Result<(), Error> {
         self.write_str(v)
