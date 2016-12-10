@@ -8,6 +8,7 @@ extern crate log;
 
 #[macro_use]
 extern crate quick_error;
+extern crate itoa;
 
 use serde::{ser, de};
 

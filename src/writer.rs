@@ -2,6 +2,7 @@ use std::io::{Write, Cursor};
 use std::fmt;
 
 use serde::ser;
+use itoa;
 
 use super::Error;
 
@@ -21,13 +22,8 @@ impl<W> Serializer<W>
     }
 
     fn write_bytes(&mut self, s: &[u8]) -> Result<(), Error> {
-        let mut pfx = [0u8; 22];
-        let off = {
-            let mut cur = Cursor::new(pfx.as_mut());
-            try!(write!(cur, "{}:", s.len()));
-            cur.position() as usize
-        };
-        try!(self.writer.write_all(&pfx[..off]));
+        try!(itoa::write(&mut self.writer, s.len()));
+        try!(self.writer.write_all(b":"));
         try!(self.writer.write_all(s));
         Ok(())
     }
