@@ -10,7 +10,6 @@ extern crate log;
 extern crate quick_error;
 extern crate itoa;
 extern crate dtoa;
-extern crate utf8_ranges;
 
 use serde::{ser, de};
 
